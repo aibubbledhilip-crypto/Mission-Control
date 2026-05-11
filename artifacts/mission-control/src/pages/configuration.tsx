@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   SlidersHorizontal, Plus, X, Database, Code2, Users, ChevronDown, ChevronRight,
-  Play, Check, AlertCircle, Loader2, Info, GitBranch,
+  Play, Check, AlertCircle, Loader2, Info, GitBranch, Network,
   Cloud, Zap, Radio, Globe, Server, Shield, Users2, CircleDot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -977,6 +977,63 @@ function ConfigCard({
               )}
             </div>
           )}
+
+          {/* ── Default Flow Nodes ── */}
+          {(() => {
+            const defaultNodes = config.flowNodes ?? [];
+            function addDefaultNode() {
+              onChange({ ...config, flowNodes: [...defaultNodes, newFlowNode()] });
+            }
+            function updateDefaultNode(id: string, updated: FlowNode) {
+              onChange({ ...config, flowNodes: defaultNodes.map(n => n.id === id ? updated : n) });
+            }
+            function deleteDefaultNode(id: string) {
+              onChange({ ...config, flowNodes: defaultNodes.filter(n => n.id !== id) });
+            }
+            return (
+              <div className="border-t border-border/30 pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Network className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Label className="text-xs font-semibold">Default Flow Nodes</Label>
+                    {defaultNodes.length > 0 && (
+                      <Badge variant="outline" className="text-[9px] border-border/50">{defaultNodes.length}</Badge>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-border hover:bg-white/5"
+                    onClick={addDefaultNode}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Node
+                  </Button>
+                </div>
+                {defaultNodes.length === 0 ? (
+                  <div className="flex items-start gap-2 text-xs text-muted-foreground bg-black/20 rounded-md p-3 border border-dashed border-border/30">
+                    <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      Add nodes to define the default validation graph — shown when no Flow Condition matches.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {defaultNodes.map(node => (
+                      <NodeEditorRow
+                        key={node.id}
+                        node={node}
+                        allNodes={defaultNodes}
+                        onChange={updated => updateDefaultNode(node.id, updated)}
+                        onDelete={() => deleteDefaultNode(node.id)}
+                        dataSources={dataSources}
+                        defaultDataSourceId={config.dataSourceId}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Flow Conditions ── */}
           <div className="border-t border-border/30 pt-4 space-y-3">
