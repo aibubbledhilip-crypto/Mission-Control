@@ -1,7 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, dataSourcesTable } from "@workspace/db";
-import { AthenaClient, ListWorkGroupsCommand } from "@aws-sdk/client-athena";
+import {
+  AthenaClient,
+  ListWorkGroupsCommand,
+  StartQueryExecutionCommand,
+  GetQueryExecutionCommand,
+  GetQueryResultsCommand,
+  QueryExecutionState,
+} from "@aws-sdk/client-athena";
 import {
   CreateDataSourceBody,
   UpdateDataSourceBody,
@@ -10,6 +17,9 @@ import {
   DeleteDataSourceParams,
   ListDataSourcesQueryParams,
   TestDataSourceConnectionParams,
+  QueryDataSourceParams,
+  QueryDataSourceBody,
+  QueryDataSourceResponse,
   ListDataSourcesResponse,
   GetDataSourceResponse,
   UpdateDataSourceResponse,
@@ -117,6 +127,91 @@ router.post("/data-sources/:id/test", async (req, res): Promise<void> => {
     message,
     latencyMs: latencyActual,
   }));
+});
+
+router.post("/data-sources/:id/query", async (req, res): Promise<void> => {
+  const params = QueryDataSourceParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const body = QueryDataSourceBody.safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+
+  const [source] = await db.select().from(dataSourcesTable).where(eq(dataSourcesTable.id, params.data.id));
+  if (!source) { res.status(404).json({ error: "Data source not found" }); return; }
+
+  if (source.type !== "athena") {
+    res.status(400).json({ error: "SQL query execution is only supported for Athena data sources" });
+    return;
+  }
+
+  const region = source.region ?? "us-east-1";
+  const extraConfig = (source.extraConfig ?? {}) as Record<string, string>;
+  const s3OutputLocation = extraConfig.s3StagingDir ?? process.env.ATHENA_S3_OUTPUT ?? "s3://dvsum-staging-prod/";
+
+  const athena = new AthenaClient({
+    region,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+  });
+
+  try {
+    // Start query
+    const startResult = await athena.send(new StartQueryExecutionCommand({
+      QueryString: body.data.sql,
+      WorkGroup: source.workgroup ?? "primary",
+      ResultConfiguration: { OutputLocation: s3OutputLocation },
+      ...(source.catalog ? { QueryExecutionContext: { Catalog: source.catalog, Database: source.database ?? undefined } } : {}),
+    }));
+
+    const executionId = startResult.QueryExecutionId!;
+
+    // Poll for completion (max 30s)
+    const deadline = Date.now() + 30_000;
+    let state: QueryExecutionState | undefined;
+    while (Date.now() < deadline) {
+      const status = await athena.send(new GetQueryExecutionCommand({ QueryExecutionId: executionId }));
+      state = status.QueryExecution?.Status?.State;
+      if (state === QueryExecutionState.SUCCEEDED) break;
+      if (state === QueryExecutionState.FAILED || state === QueryExecutionState.CANCELLED) {
+        const reason = status.QueryExecution?.Status?.StateChangeReason ?? "Query failed";
+        res.status(422).json({ error: reason });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    if (state !== QueryExecutionState.SUCCEEDED) {
+      res.status(504).json({ error: "Query timed out after 30 seconds" });
+      return;
+    }
+
+    // Fetch results
+    const results = await athena.send(new GetQueryResultsCommand({
+      QueryExecutionId: executionId,
+      MaxResults: 1000,
+    }));
+
+    const rows = results.ResultSet?.Rows ?? [];
+    const headerRow = rows[0]?.Data?.map(d => d.VarCharValue ?? "") ?? [];
+    const dataRows = rows.slice(1).map(row => {
+      const obj: Record<string, string> = {};
+      (row.Data ?? []).forEach((cell, i) => {
+        obj[headerRow[i] ?? `col${i}`] = cell.VarCharValue ?? "";
+      });
+      return obj;
+    });
+
+    res.json(QueryDataSourceResponse.parse({
+      executionId,
+      columns: headerRow,
+      rows: dataRows,
+      rowCount: dataRows.length,
+    }));
+  } catch (err: any) {
+    req.log.error({ err, sourceId: source.id }, "Athena query failed");
+    res.status(500).json({ error: err?.message ?? "Query execution failed" });
+  }
 });
 
 export default router;

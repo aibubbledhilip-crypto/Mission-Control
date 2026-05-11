@@ -33,11 +33,10 @@ import {
   Maximize,
   Minimize,
   X,
-  ShieldAlert,
-  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
-import { loadCustomerConfig } from "./configuration";
+import { loadJourneyConfigs, type JourneyConfig } from "./configuration";
+import type { Journey } from "@workspace/api-client-react";
 
 // ─── Flow Canvas ──────────────────────────────────────────────────────────────
 
@@ -169,10 +168,10 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
   if (!detail) return null;
   const journey = detail.journey;
 
-  const statusClass =
+  const badgeClass =
     journey.status === "activated" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
     journey.status === "suspended" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-    journey.status === "failed" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+    journey.status === "failed"    ? "bg-red-500/10 text-red-400 border-red-500/20" :
     "bg-slate-500/10 text-slate-400 border-slate-500/20";
 
   return (
@@ -180,46 +179,27 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
       {/* Panel Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card/50 backdrop-blur shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-white transition-colors shrink-0"
-          >
+          <button onClick={onClose} className="text-muted-foreground hover:text-white transition-colors shrink-0">
             <X className="w-4 h-4" />
           </button>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-sm font-bold text-white truncate">{journey.externalId}</span>
-              <Badge variant="outline" className={statusClass}>
-                {journey.status.toUpperCase()}
-              </Badge>
+              <Badge variant="outline" className={badgeClass}>{journey.status.toUpperCase()}</Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">
               Account: {journey.accountId}
-              {journey.startedAt && (
-                <span className="ml-3">
-                  Started {format(new Date(journey.startedAt), "PP HH:mm:ss")}
-                </span>
-              )}
+              {journey.startedAt && <span className="ml-3">Started {format(new Date(journey.startedAt), "PP HH:mm:ss")}</span>}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {journey.status === "suspended" ? (
-            <Button
-              size="sm"
-              onClick={handleResume}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white h-8"
-              disabled={resumeMutation.isPending}
-            >
+            <Button size="sm" onClick={handleResume} className="bg-emerald-600 hover:bg-emerald-500 text-white h-8" disabled={resumeMutation.isPending}>
               <Play className="w-3 h-3 mr-1" /> Resume
             </Button>
           ) : journey.status !== "completed" && journey.status !== "failed" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setSuspendDialogOpen(true)}
-              className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10 h-8"
-            >
+            <Button size="sm" variant="outline" onClick={() => setSuspendDialogOpen(true)} className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10 h-8">
               <Pause className="w-3 h-3 mr-1" /> Suspend
             </Button>
           ) : null}
@@ -229,49 +209,25 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
       {/* Canvas + Node Inspector */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 relative bg-black overflow-hidden">
-          {/* Zoom controls */}
           <div className="absolute top-3 right-3 z-20 flex bg-card border border-border rounded-md shadow-lg overflow-hidden">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setZoom(z => Math.max(50, z - 10))}
-              className="h-7 w-7 rounded-none border-r border-border"
-            >
+            <Button variant="ghost" size="icon" onClick={() => setZoom(z => Math.max(50, z - 10))} className="h-7 w-7 rounded-none border-r border-border">
               <Minimize className="w-3 h-3" />
             </Button>
             <div className="flex items-center justify-center w-10 text-[11px] font-medium text-white">{zoom}%</div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setZoom(z => Math.min(200, z + 10))}
-              className="h-7 w-7 rounded-none border-l border-border"
-            >
+            <Button variant="ghost" size="icon" onClick={() => setZoom(z => Math.min(200, z + 10))} className="h-7 w-7 rounded-none border-l border-border">
               <Maximize className="w-3 h-3" />
             </Button>
           </div>
-          <div
-            className="w-full h-full overflow-auto"
-            style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left" }}
-          >
-            <FlowCanvas
-              nodes={nodes}
-              onNodeClick={setSelectedNodeId}
-              selectedNodeId={selectedNodeId}
-            />
+          <div className="w-full h-full overflow-auto" style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left" }}>
+            <FlowCanvas nodes={nodes} onNodeClick={setSelectedNodeId} selectedNodeId={selectedNodeId} />
           </div>
         </div>
 
-        {/* Node Inspector */}
         {selectedNode && (
           <div className="w-64 border-l border-border bg-card/80 backdrop-blur overflow-y-auto flex flex-col shrink-0">
             <div className="p-3 border-b border-border flex items-center justify-between sticky top-0 bg-card z-10">
               <h3 className="font-bold text-white text-sm truncate pr-2">{selectedNode.name}</h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSelectedNodeId(null)}
-                className="h-7 w-7 shrink-0"
-              >
+              <Button variant="ghost" size="icon" onClick={() => setSelectedNodeId(null)} className="h-7 w-7 shrink-0">
                 <X className="w-3 h-3" />
               </Button>
             </div>
@@ -294,9 +250,7 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
               )}
               <div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Updated</div>
-                <div className="text-xs text-white font-mono">
-                  {format(new Date(selectedNode.updatedAt), "HH:mm:ss.SSS")}
-                </div>
+                <div className="text-xs text-white font-mono">{format(new Date(selectedNode.updatedAt), "HH:mm:ss.SSS")}</div>
               </div>
             </div>
           </div>
@@ -307,29 +261,18 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
         <DialogContent className="bg-card border-border sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Suspend Journey</DialogTitle>
-            <DialogDescription>
-              This will pause execution of the flow. Nodes currently running will complete.
-            </DialogDescription>
+            <DialogDescription>This will pause execution. Nodes currently running will complete.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="reason">Reason / Notes</Label>
-              <Textarea
-                id="reason"
-                value={suspendReason}
-                onChange={(e) => setSuspendReason(e.target.value)}
-                placeholder="Why are you suspending this journey?"
-                className="bg-black/50 border-border text-white"
-              />
+              <Textarea id="reason" value={suspendReason} onChange={e => setSuspendReason(e.target.value)}
+                placeholder="Why are you suspending this journey?" className="bg-black/50 border-border text-white" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSuspendDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleSuspend}
-              disabled={suspendMutation.isPending}
-              className="bg-amber-600 hover:bg-amber-500 text-white"
-            >
+            <Button onClick={handleSuspend} disabled={suspendMutation.isPending} className="bg-amber-600 hover:bg-amber-500 text-white">
               Confirm Suspend
             </Button>
           </DialogFooter>
@@ -341,7 +284,7 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
 
 // ─── Status / Health Helpers ──────────────────────────────────────────────────
 
-function statusClass(status: string) {
+function statusBadge(status: string) {
   switch (status) {
     case "activated": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
     case "suspended": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
@@ -360,31 +303,120 @@ function healthDot(health: string) {
   }
 }
 
+// ─── Journey Row ──────────────────────────────────────────────────────────────
+
+function JourneyRow({ journey, selected, onClick }: {
+  journey: Journey;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 transition-all ${
+        selected ? "bg-primary/10 border-l-2 border-primary" : "hover:bg-white/5 border-l-2 border-transparent"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-[0_0_6px_currentColor] ${healthDot(journey.healthStatus)}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className="font-mono text-xs font-medium text-white truncate max-w-[140px]">{journey.externalId}</span>
+            <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${statusBadge(journey.status)}`}>
+              {journey.status.toUpperCase()}
+            </Badge>
+          </div>
+          <div className="text-[10px] text-muted-foreground truncate">{journey.accountId}</div>
+          {journey.latencyMs && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+              <Activity className="w-2.5 h-2.5" />
+              {journey.latencyMs}ms
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Group Section ────────────────────────────────────────────────────────────
+
+function GroupSection({ config, journeys, selectedId, onSelect }: {
+  config: JourneyConfig | null;
+  journeys: Journey[];
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (journeys.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 transition-colors"
+      >
+        {config ? (
+          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
+        ) : (
+          <div className="w-2 h-2 rounded-full bg-slate-500 shrink-0" />
+        )}
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex-1 text-left truncate">
+          {config ? config.name : "Other"}
+        </span>
+        <span className="text-[9px] text-muted-foreground">{journeys.length}</span>
+        {collapsed ? <ChevronRight className="w-3 h-3 text-muted-foreground" /> : <ChevronLeft className="w-3 h-3 text-muted-foreground rotate-90" />}
+      </button>
+      {!collapsed && journeys.map(j => (
+        <JourneyRow key={j.id} journey={j} selected={selectedId === j.id} onClick={() => onSelect(j.id)} />
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Journeys Page ───────────────────────────────────────────────────────
 
 export default function Journeys() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
-  const [customerConfig] = useState(loadCustomerConfig);
+  const [configs] = useState<JourneyConfig[]>(() => loadJourneyConfigs());
 
   const { data: user } = useGetCurrentUser();
-  const { data: journeysData, isLoading } = useListJourneys({
-    tenantId: user?.tenantId,
-    search,
-  });
+  const { data: journeysData, isLoading } = useListJourneys({ tenantId: user?.tenantId, search });
 
-  // Apply customer config filter
-  const journeys = (() => {
-    const items = journeysData?.items ?? [];
-    if (customerConfig.showAll || customerConfig.accountIds.length === 0) return items;
-    return items.filter(j => customerConfig.accountIds.includes(j.accountId ?? ""));
-  })();
+  const allJourneys = journeysData?.items ?? [];
 
-  // Select first journey automatically when list loads
+  // Group journeys by configuration
+  const groups: { config: JourneyConfig | null; journeys: Journey[] }[] = [];
+  const assignedIds = new Set<number>();
+
+  const enabledConfigs = configs.filter(c => c.enabled && c.accountIds.length > 0);
+
+  for (const cfg of enabledConfigs) {
+    const matched = allJourneys.filter(j => cfg.accountIds.includes(j.accountId ?? "") && !assignedIds.has(j.id));
+    matched.forEach(j => assignedIds.add(j.id));
+    if (matched.length > 0) groups.push({ config: cfg, journeys: matched });
+  }
+
+  // Remaining journeys not claimed by any config
+  const others = allJourneys.filter(j => !assignedIds.has(j.id));
+
+  if (enabledConfigs.length === 0) {
+    // No configs — show everything flat (no grouping)
+    groups.push({ config: null, journeys: allJourneys });
+  } else if (others.length > 0) {
+    groups.push({ config: null, journeys: others });
+  }
+
+  const flatJourneys = groups.flatMap(g => g.journeys);
+  const isGrouped = enabledConfigs.length > 0;
+
+  // Auto-select first journey on load
   useEffect(() => {
-    if (!selectedId && journeys.length > 0) setSelectedId(journeys[0].id);
-  }, [journeys.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selectedId && flatJourneys.length > 0) setSelectedId(flatJourneys[0].id);
+  }, [flatJourneys.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="-m-6 md:-m-8 flex h-[calc(100vh-4rem)] overflow-hidden">
@@ -396,8 +428,8 @@ export default function Journeys() {
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Journeys</div>
             {journeysData && (
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                {journeys.length} {journeys.length === 1 ? "result" : "results"}
-                {!customerConfig.showAll && customerConfig.accountIds.length > 0 && " (filtered)"}
+                {flatJourneys.length} {flatJourneys.length === 1 ? "result" : "results"}
+                {isGrouped && ` · ${enabledConfigs.length} group${enabledConfigs.length === 1 ? "" : "s"}`}
               </div>
             )}
           </div>
@@ -410,11 +442,23 @@ export default function Journeys() {
             <Input
               placeholder="Search by ID or account..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value)}
               className="pl-8 h-8 bg-black/40 border-border text-white text-xs"
             />
           </div>
         </div>
+
+        {/* Group legend (when grouped) */}
+        {isGrouped && (
+          <div className="px-3 py-1.5 border-b border-border/30 flex gap-2 flex-wrap">
+            {enabledConfigs.map(cfg => (
+              <div key={cfg.id} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
+                {cfg.name}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Journey list */}
         <div className="flex-1 overflow-y-auto py-1">
@@ -424,43 +468,29 @@ export default function Journeys() {
                 <Skeleton className="h-16 w-full bg-card/50 rounded-lg" />
               </div>
             ))
-          ) : journeys.length === 0 ? (
+          ) : flatJourneys.length === 0 ? (
             <div className="p-6 text-center text-muted-foreground">
               <Route className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-xs">No journeys found</p>
             </div>
+          ) : isGrouped ? (
+            groups.map((group, i) => (
+              <GroupSection
+                key={group.config?.id ?? "other"}
+                config={group.config}
+                journeys={group.journeys}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            ))
           ) : (
-            journeys.map((journey) => (
-              <button
+            flatJourneys.map(journey => (
+              <JourneyRow
                 key={journey.id}
+                journey={journey}
+                selected={selectedId === journey.id}
                 onClick={() => setSelectedId(journey.id)}
-                className={`w-full text-left px-3 py-2 transition-all group ${
-                  selectedId === journey.id
-                    ? "bg-primary/10 border-l-2 border-primary"
-                    : "hover:bg-white/5 border-l-2 border-transparent"
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 shadow-[0_0_6px_currentColor] ${healthDot(journey.healthStatus)}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                      <span className="font-mono text-xs font-medium text-white truncate max-w-[140px]">
-                        {journey.externalId}
-                      </span>
-                      <Badge variant="outline" className={`text-[9px] py-0 px-1.5 ${statusClass(journey.status)}`}>
-                        {journey.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground truncate">{journey.accountId}</div>
-                    {journey.latencyMs && (
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-                        <Activity className="w-2.5 h-2.5" />
-                        {journey.latencyMs}ms
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </button>
+              />
             ))
           )}
         </div>
@@ -471,7 +501,6 @@ export default function Journeys() {
         <button
           onClick={() => setListCollapsed(c => !c)}
           className="absolute z-10 flex items-center justify-center w-5 h-10 -ml-2.5 bg-[#080c14] border border-border text-muted-foreground hover:text-white hover:border-primary/40 rounded-md transition-colors shadow-md"
-          aria-label={listCollapsed ? "Expand list" : "Collapse list"}
         >
           {listCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
         </button>
@@ -480,11 +509,7 @@ export default function Journeys() {
       {/* ── Journey Detail Panel ── */}
       <div className="flex-1 overflow-hidden bg-black">
         {selectedId ? (
-          <JourneyDetailPanel
-            key={selectedId}
-            journeyId={selectedId}
-            onClose={() => setSelectedId(null)}
-          />
+          <JourneyDetailPanel key={selectedId} journeyId={selectedId} onClose={() => setSelectedId(null)} />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Route className="w-14 h-14 mb-4 opacity-20" />

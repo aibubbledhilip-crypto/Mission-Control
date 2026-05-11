@@ -267,6 +267,20 @@ export interface ConnectionTestResult {
   latencyMs: number | null;
 }
 
+export interface DataSourceQueryInput {
+  /** SQL query to execute */
+  sql: string;
+}
+
+export type DataSourceQueryResultRowsItem = { [key: string]: string };
+
+export interface DataSourceQueryResult {
+  executionId: string;
+  columns: string[];
+  rows: DataSourceQueryResultRowsItem[];
+  rowCount?: number;
+}
+
 export type JourneyStatus = (typeof JourneyStatus)[keyof typeof JourneyStatus];
 
 export const JourneyStatus = {

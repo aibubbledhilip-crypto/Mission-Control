@@ -23,6 +23,8 @@ import type {
   DashboardSummary,
   DataSource,
   DataSourceInput,
+  DataSourceQueryInput,
+  DataSourceQueryResult,
   DataSourceUpdate,
   GetDashboardSummaryParams,
   GetJourneyStatusBreakdownParams,
@@ -1572,6 +1574,93 @@ export const useTestDataSourceConnection = <
   TContext
 > => {
   return useMutation(getTestDataSourceConnectionMutationOptions(options));
+};
+
+/**
+ * @summary Execute a SQL query against a data source
+ */
+export const getQueryDataSourceUrl = (id: number) => {
+  return `/api/data-sources/${id}/query`;
+};
+
+export const queryDataSource = async (
+  id: number,
+  dataSourceQueryInput: DataSourceQueryInput,
+  options?: RequestInit,
+): Promise<DataSourceQueryResult> => {
+  return customFetch<DataSourceQueryResult>(getQueryDataSourceUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(dataSourceQueryInput),
+  });
+};
+
+export const getQueryDataSourceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof queryDataSource>>,
+    TError,
+    { id: number; data: BodyType<DataSourceQueryInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof queryDataSource>>,
+  TError,
+  { id: number; data: BodyType<DataSourceQueryInput> },
+  TContext
+> => {
+  const mutationKey = ["queryDataSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof queryDataSource>>,
+    { id: number; data: BodyType<DataSourceQueryInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return queryDataSource(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type QueryDataSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof queryDataSource>>
+>;
+export type QueryDataSourceMutationBody = BodyType<DataSourceQueryInput>;
+export type QueryDataSourceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Execute a SQL query against a data source
+ */
+export const useQueryDataSource = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof queryDataSource>>,
+    TError,
+    { id: number; data: BodyType<DataSourceQueryInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof queryDataSource>>,
+  TError,
+  { id: number; data: BodyType<DataSourceQueryInput> },
+  TContext
+> => {
+  return useMutation(getQueryDataSourceMutationOptions(options));
 };
 
 /**

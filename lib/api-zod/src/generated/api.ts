@@ -397,6 +397,24 @@ export const TestDataSourceConnectionResponse = zod.object({
 });
 
 /**
+ * @summary Execute a SQL query against a data source
+ */
+export const QueryDataSourceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const QueryDataSourceBody = zod.object({
+  sql: zod.string().describe("SQL query to execute"),
+});
+
+export const QueryDataSourceResponse = zod.object({
+  executionId: zod.string(),
+  columns: zod.array(zod.string()),
+  rows: zod.array(zod.record(zod.string(), zod.string())),
+  rowCount: zod.number().optional(),
+});
+
+/**
  * @summary List journeys
  */
 export const ListJourneysQueryParams = zod.object({
