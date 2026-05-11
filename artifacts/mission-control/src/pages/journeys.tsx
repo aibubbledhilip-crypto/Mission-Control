@@ -33,9 +33,12 @@ import {
   Maximize,
   Minimize,
   X,
+  Database,
+  Clock,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
-import { loadJourneyConfigs, type JourneyConfig } from "./configuration";
+import { loadJourneyConfigs, type JourneyConfig } from "@/lib/journey-configs";
 import type { Journey } from "@workspace/api-client-react";
 
 // ─── Flow Canvas ──────────────────────────────────────────────────────────────
@@ -78,7 +81,6 @@ function FlowCanvas({ nodes, onNodeClick, selectedNodeId }: {
               fill="none"
               stroke="rgba(14,165,233,0.35)"
               strokeWidth="2"
-              className={node.status === "running" ? "animate-pulse" : ""}
             />
           );
         })}
@@ -95,9 +97,7 @@ function FlowCanvas({ nodes, onNodeClick, selectedNodeId }: {
           style={{ left: node.positionX, top: node.positionY, width: 160 }}
         >
           <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-3 shadow-lg">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              {node.nodeType}
-            </div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">{node.nodeType}</div>
             <div className="text-sm font-bold text-white truncate">{node.name}</div>
             <div className="mt-2 flex items-center gap-1.5">
               <div className={`w-2 h-2 rounded-full ${
@@ -115,9 +115,9 @@ function FlowCanvas({ nodes, onNodeClick, selectedNodeId }: {
   );
 }
 
-// ─── Journey Detail Panel ─────────────────────────────────────────────────────
+// ─── DB Journey Detail Panel ──────────────────────────────────────────────────
 
-function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose: () => void }) {
+function DbJourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -176,7 +176,6 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
 
   return (
     <div className="flex flex-col h-full">
-      {/* Panel Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card/50 backdrop-blur shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={onClose} className="text-muted-foreground hover:text-white transition-colors shrink-0">
@@ -206,7 +205,6 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
         </div>
       </div>
 
-      {/* Canvas + Node Inspector */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 relative bg-black overflow-hidden">
           <div className="absolute top-3 right-3 z-20 flex bg-card border border-border rounded-md shadow-lg overflow-hidden">
@@ -282,6 +280,86 @@ function JourneyDetailPanel({ journeyId, onClose }: { journeyId: number; onClose
   );
 }
 
+// ─── SQL Row Detail Panel ─────────────────────────────────────────────────────
+
+function SqlRowDetailPanel({
+  row,
+  columns,
+  configName,
+  configColor,
+  onClose,
+}: {
+  row: Record<string, string>;
+  columns: string[];
+  configName: string;
+  configColor: string;
+  onClose: () => void;
+}) {
+  const orderIdCol = columns.find(c => c.toLowerCase().includes("order")) ?? columns[0] ?? "";
+  const statusCol = columns.find(c => c.toLowerCase() === "status") ?? "";
+  const status = statusCol ? row[statusCol] : null;
+
+  const statusBadgeClass =
+    status?.toLowerCase() === "completed" || status?.toLowerCase() === "active" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+    status?.toLowerCase() === "failed" || status?.toLowerCase() === "cancelled" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+    status?.toLowerCase() === "pending" || status?.toLowerCase() === "in progress" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+    "bg-slate-500/10 text-slate-400 border-slate-500/20";
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card/50 backdrop-blur shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onClose} className="text-muted-foreground hover:text-white transition-colors shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-sm font-bold text-white truncate">
+                {orderIdCol ? row[orderIdCol] : Object.values(row)[0]}
+              </span>
+              {status && (
+                <Badge variant="outline" className={`text-[10px] ${statusBadgeClass}`}>
+                  {status.toUpperCase()}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: configColor }} />
+              <p className="text-xs text-muted-foreground truncate">{configName}</p>
+              <span className="text-muted-foreground">·</span>
+              <Database className="w-3 h-3 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">Athena</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Field grid */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="grid gap-2">
+          {columns.map(col => {
+            const val = row[col] ?? "";
+            if (!val) return null;
+            return (
+              <div key={col} className="flex flex-col gap-0.5 p-3 rounded-lg bg-card/40 border border-border/40 hover:bg-card/60 transition-colors">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">{col}</div>
+                <div className="text-sm text-white font-mono break-all">{val}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Unified Selection ────────────────────────────────────────────────────────
+
+type SelectedItem =
+  | { kind: "db"; id: number }
+  | { kind: "sql"; configId: string; rowIndex: number };
+
 // ─── Status / Health Helpers ──────────────────────────────────────────────────
 
 function statusBadge(status: string) {
@@ -303,9 +381,9 @@ function healthDot(health: string) {
   }
 }
 
-// ─── Journey Row ──────────────────────────────────────────────────────────────
+// ─── DB Journey Row ───────────────────────────────────────────────────────────
 
-function JourneyRow({ journey, selected, onClick }: {
+function DbJourneyRow({ journey, selected, onClick }: {
   journey: Journey;
   selected: boolean;
   onClick: () => void;
@@ -339,16 +417,118 @@ function JourneyRow({ journey, selected, onClick }: {
   );
 }
 
+// ─── SQL Row Item ─────────────────────────────────────────────────────────────
+
+function SqlRowItem({ row, columns, color, selected, onClick }: {
+  row: Record<string, string>;
+  columns: string[];
+  color: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  // Pick meaningful display columns
+  const idCol = columns.find(c => c.toLowerCase().includes("order")) ?? columns[0] ?? "";
+  const acctCol = columns.find(c => c.toLowerCase() === "bancan" || c.toLowerCase().includes("account")) ?? columns[1] ?? "";
+  const statusCol = columns.find(c => c.toLowerCase() === "status") ?? "";
+  const dateCol = columns.find(c => c.toLowerCase().includes("ts") || c.toLowerCase().includes("date") || c.toLowerCase().includes("created")) ?? "";
+
+  const status = statusCol ? row[statusCol] : null;
+  const statusColor =
+    status?.toLowerCase() === "completed" || status?.toLowerCase() === "active" ? "text-emerald-400" :
+    status?.toLowerCase() === "failed" || status?.toLowerCase() === "cancelled" ? "text-red-400" :
+    status?.toLowerCase() === "pending" ? "text-amber-400" : "text-slate-400";
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 transition-all ${
+        selected ? "border-l-2 border-l-[var(--item-color)] bg-[var(--item-color-10)]" : "border-l-2 border-transparent hover:bg-white/5"
+      }`}
+      style={{ "--item-color": color, "--item-color-10": color + "1a" } as React.CSSProperties}
+    >
+      <div className="flex items-start gap-2">
+        <div className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+            <span className="font-mono text-xs font-medium text-white truncate max-w-[150px]">
+              {idCol ? row[idCol] : Object.values(row)[0]}
+            </span>
+            {status && (
+              <span className={`text-[9px] font-semibold ${statusColor}`}>
+                {status.toUpperCase()}
+              </span>
+            )}
+          </div>
+          {acctCol && acctCol !== idCol && (
+            <div className="text-[10px] text-muted-foreground truncate font-mono">{row[acctCol]}</div>
+          )}
+          {dateCol && row[dateCol] && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+              <Clock className="w-2.5 h-2.5" />
+              <span className="truncate font-mono">{row[dateCol]}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 // ─── Group Section ────────────────────────────────────────────────────────────
 
-function GroupSection({ config, journeys, selectedId, onSelect }: {
-  config: JourneyConfig | null;
-  journeys: Journey[];
-  selectedId: number | null;
-  onSelect: (id: number) => void;
+function SqlGroupSection({ config, selected, onSelect }: {
+  config: JourneyConfig;
+  selected: SelectedItem | null;
+  onSelect: (item: SelectedItem) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const rows = config.rawRows ?? [];
+  const columns = config.rawColumns ?? [];
 
+  if (rows.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 transition-colors"
+      >
+        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex-1 text-left truncate">
+          {config.name}
+        </span>
+        <span className="text-[9px] text-muted-foreground">{rows.length}</span>
+        {config.lastRunAt && (
+          <span className="text-[9px] text-muted-foreground/60 hidden sm:block">
+            {format(new Date(config.lastRunAt), "HH:mm")}
+          </span>
+        )}
+        {collapsed ? <ChevronRight className="w-3 h-3 text-muted-foreground" /> : <ChevronLeft className="w-3 h-3 text-muted-foreground rotate-90" />}
+      </button>
+      {!collapsed && rows.map((row, i) => {
+        const isSelected = selected?.kind === "sql" && selected.configId === config.id && selected.rowIndex === i;
+        return (
+          <SqlRowItem
+            key={i}
+            row={row}
+            columns={columns}
+            color={config.color}
+            selected={isSelected}
+            onClick={() => onSelect({ kind: "sql", configId: config.id, rowIndex: i })}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function DbGroupSection({ config, journeys, selected, onSelect }: {
+  config: JourneyConfig | null;
+  journeys: Journey[];
+  selected: SelectedItem | null;
+  onSelect: (item: SelectedItem) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
   if (journeys.length === 0) return null;
 
   return (
@@ -368,9 +548,17 @@ function GroupSection({ config, journeys, selectedId, onSelect }: {
         <span className="text-[9px] text-muted-foreground">{journeys.length}</span>
         {collapsed ? <ChevronRight className="w-3 h-3 text-muted-foreground" /> : <ChevronLeft className="w-3 h-3 text-muted-foreground rotate-90" />}
       </button>
-      {!collapsed && journeys.map(j => (
-        <JourneyRow key={j.id} journey={j} selected={selectedId === j.id} onClick={() => onSelect(j.id)} />
-      ))}
+      {!collapsed && journeys.map(j => {
+        const isSelected = selected?.kind === "db" && selected.id === j.id;
+        return (
+          <DbJourneyRow
+            key={j.id}
+            journey={j}
+            selected={isSelected}
+            onClick={() => onSelect({ kind: "db", id: j.id })}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -379,44 +567,72 @@ function GroupSection({ config, journeys, selectedId, onSelect }: {
 
 export default function Journeys() {
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<SelectedItem | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
-  const [configs] = useState<JourneyConfig[]>(() => loadJourneyConfigs());
+  const [configs, setConfigs] = useState<JourneyConfig[]>(() => loadJourneyConfigs());
+
+  // Reload configs from localStorage whenever this page is focused
+  useEffect(() => {
+    function onFocus() { setConfigs(loadJourneyConfigs()); }
+    window.addEventListener("focus", onFocus);
+    // Also poll every 2s while visible (handles same-tab navigation)
+    const interval = setInterval(() => { setConfigs(loadJourneyConfigs()); }, 2000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(interval); };
+  }, []);
 
   const { data: user } = useGetCurrentUser();
-  const { data: journeysData, isLoading } = useListJourneys({ tenantId: user?.tenantId, search });
+  const { data: journeysData, isLoading: dbLoading } = useListJourneys({ tenantId: user?.tenantId, search });
+  const allDbJourneys = journeysData?.items ?? [];
 
-  const allJourneys = journeysData?.items ?? [];
+  // Separate configs into SQL-powered (have rawRows) vs manual (filter from DB)
+  const sqlConfigs = configs.filter(c => c.enabled && c.type === "sql" && (c.rawRows?.length ?? 0) > 0);
+  const manualConfigs = configs.filter(c => c.enabled && c.type === "manual" && c.accountIds.length > 0);
 
-  // Group journeys by configuration
-  const groups: { config: JourneyConfig | null; journeys: Journey[] }[] = [];
+  // DB groups from manual configs
+  const dbGroups: { config: JourneyConfig | null; journeys: Journey[] }[] = [];
   const assignedIds = new Set<number>();
-
-  const enabledConfigs = configs.filter(c => c.enabled && c.accountIds.length > 0);
-
-  for (const cfg of enabledConfigs) {
-    const matched = allJourneys.filter(j => cfg.accountIds.includes(j.accountId ?? "") && !assignedIds.has(j.id));
+  for (const cfg of manualConfigs) {
+    const matched = allDbJourneys.filter(j => cfg.accountIds.includes(j.accountId ?? "") && !assignedIds.has(j.id));
     matched.forEach(j => assignedIds.add(j.id));
-    if (matched.length > 0) groups.push({ config: cfg, journeys: matched });
+    if (matched.length > 0) dbGroups.push({ config: cfg, journeys: matched });
   }
 
-  // Remaining journeys not claimed by any config
-  const others = allJourneys.filter(j => !assignedIds.has(j.id));
-
-  if (enabledConfigs.length === 0) {
-    // No configs — show everything flat (no grouping)
-    groups.push({ config: null, journeys: allJourneys });
-  } else if (others.length > 0) {
-    groups.push({ config: null, journeys: others });
+  // If no configs at all, show all DB journeys flat
+  if (sqlConfigs.length === 0 && manualConfigs.length === 0) {
+    dbGroups.push({ config: null, journeys: allDbJourneys });
+  } else {
+    // Remaining DB journeys not claimed by any manual config
+    const others = allDbJourneys.filter(j => !assignedIds.has(j.id));
+    if (others.length > 0) dbGroups.push({ config: null, journeys: others });
   }
 
-  const flatJourneys = groups.flatMap(g => g.journeys);
-  const isGrouped = enabledConfigs.length > 0;
+  // Total count for header
+  const sqlTotal = sqlConfigs.reduce((sum, c) => sum + (c.rawRows?.length ?? 0), 0);
+  const dbTotal = dbGroups.reduce((sum, g) => sum + g.journeys.length, 0);
+  const total = sqlTotal + dbTotal;
 
-  // Auto-select first journey on load
+  const hasSqlConfigs = sqlConfigs.length > 0;
+
+  // Auto-select first item
   useEffect(() => {
-    if (!selectedId && flatJourneys.length > 0) setSelectedId(flatJourneys[0].id);
-  }, [flatJourneys.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (selected) return;
+    if (sqlConfigs.length > 0 && (sqlConfigs[0].rawRows?.length ?? 0) > 0) {
+      setSelected({ kind: "sql", configId: sqlConfigs[0].id, rowIndex: 0 });
+    } else if (allDbJourneys.length > 0) {
+      setSelected({ kind: "db", id: allDbJourneys[0].id });
+    }
+  }, [sqlConfigs.length, allDbJourneys.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Find the selected SQL row details
+  const selectedSqlConfig = selected?.kind === "sql" ? configs.find(c => c.id === selected.configId) : null;
+  const selectedSqlRow = selectedSqlConfig && selected?.kind === "sql" ? selectedSqlConfig.rawRows?.[selected.rowIndex] : null;
+
+  // Filter SQL rows by search
+  function rowMatchesSearch(row: Record<string, string>) {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return Object.values(row).some(v => v?.toLowerCase().includes(q));
+  }
 
   return (
     <div className="-m-6 md:-m-8 flex h-[calc(100vh-4rem)] overflow-hidden">
@@ -426,13 +642,20 @@ export default function Journeys() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
           <div className="flex-1 min-w-0">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Journeys</div>
-            {journeysData && (
-              <div className="text-[10px] text-muted-foreground mt-0.5">
-                {flatJourneys.length} {flatJourneys.length === 1 ? "result" : "results"}
-                {isGrouped && ` · ${enabledConfigs.length} group${enabledConfigs.length === 1 ? "" : "s"}`}
-              </div>
-            )}
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {total} {total === 1 ? "result" : "results"}
+              {hasSqlConfigs && ` · ${sqlConfigs.length} SQL group${sqlConfigs.length === 1 ? "" : "s"}`}
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setConfigs(loadJourneyConfigs())}
+            className="h-7 w-7 text-muted-foreground hover:text-white"
+            title="Reload configurations"
+          >
+            <RefreshCw className="w-3 h-3" />
+          </Button>
         </div>
 
         {/* Search */}
@@ -448,13 +671,16 @@ export default function Journeys() {
           </div>
         </div>
 
-        {/* Group legend (when grouped) */}
-        {isGrouped && (
-          <div className="px-3 py-1.5 border-b border-border/30 flex gap-2 flex-wrap">
-            {enabledConfigs.map(cfg => (
+        {/* Legend */}
+        {hasSqlConfigs && (
+          <div className="px-3 py-1.5 border-b border-border/30 flex gap-3 flex-wrap">
+            {sqlConfigs.map(cfg => (
               <div key={cfg.id} className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cfg.color }} />
                 {cfg.name}
+                {cfg.lastRunAt && (
+                  <span className="text-muted-foreground/50">· {format(new Date(cfg.lastRunAt), "HH:mm")}</span>
+                )}
               </div>
             ))}
           </div>
@@ -462,36 +688,52 @@ export default function Journeys() {
 
         {/* Journey list */}
         <div className="flex-1 overflow-y-auto py-1">
-          {isLoading ? (
-            Array(6).fill(0).map((_, i) => (
+          {/* SQL-powered groups */}
+          {sqlConfigs.map(cfg => {
+            const filtered = {
+              ...cfg,
+              rawRows: (cfg.rawRows ?? []).filter(rowMatchesSearch),
+            };
+            return (
+              <SqlGroupSection
+                key={cfg.id}
+                config={filtered}
+                selected={selected}
+                onSelect={setSelected}
+              />
+            );
+          })}
+
+          {/* DB groups (manual or unconfigured) */}
+          {dbLoading && dbGroups.length === 0 ? (
+            Array(4).fill(0).map((_, i) => (
               <div key={i} className="px-3 py-1.5">
-                <Skeleton className="h-16 w-full bg-card/50 rounded-lg" />
+                <Skeleton className="h-14 w-full bg-card/50 rounded-lg" />
               </div>
             ))
-          ) : flatJourneys.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground">
-              <Route className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-xs">No journeys found</p>
-            </div>
-          ) : isGrouped ? (
-            groups.map((group, i) => (
-              <GroupSection
+          ) : (
+            dbGroups.map((group, i) => (
+              <DbGroupSection
                 key={group.config?.id ?? "other"}
                 config={group.config}
                 journeys={group.journeys}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
+                selected={selected}
+                onSelect={setSelected}
               />
             ))
-          ) : (
-            flatJourneys.map(journey => (
-              <JourneyRow
-                key={journey.id}
-                journey={journey}
-                selected={selectedId === journey.id}
-                onClick={() => setSelectedId(journey.id)}
-              />
-            ))
+          )}
+
+          {/* Empty state */}
+          {total === 0 && !dbLoading && (
+            <div className="p-6 text-center text-muted-foreground">
+              <Route className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">No journeys found</p>
+              {hasSqlConfigs && (
+                <p className="text-[10px] mt-1 text-muted-foreground/60">
+                  Go to Configuration and click "Run & Apply" to load results.
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -506,14 +748,32 @@ export default function Journeys() {
         </button>
       </div>
 
-      {/* ── Journey Detail Panel ── */}
+      {/* ── Detail Panel ── */}
       <div className="flex-1 overflow-hidden bg-black">
-        {selectedId ? (
-          <JourneyDetailPanel key={selectedId} journeyId={selectedId} onClose={() => setSelectedId(null)} />
+        {selected?.kind === "sql" && selectedSqlRow && selectedSqlConfig ? (
+          <SqlRowDetailPanel
+            key={`${selected.configId}-${selected.rowIndex}`}
+            row={selectedSqlRow}
+            columns={selectedSqlConfig.rawColumns ?? []}
+            configName={selectedSqlConfig.name}
+            configColor={selectedSqlConfig.color}
+            onClose={() => setSelected(null)}
+          />
+        ) : selected?.kind === "db" ? (
+          <DbJourneyDetailPanel
+            key={selected.id}
+            journeyId={selected.id}
+            onClose={() => setSelected(null)}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Route className="w-14 h-14 mb-4 opacity-20" />
-            <p className="text-sm">Select a journey to view its flow</p>
+            <p className="text-sm">Select a journey to view its details</p>
+            {hasSqlConfigs && (
+              <p className="text-xs mt-2 text-muted-foreground/60">
+                SQL groups loaded · click any row to inspect
+              </p>
+            )}
           </div>
         )}
       </div>

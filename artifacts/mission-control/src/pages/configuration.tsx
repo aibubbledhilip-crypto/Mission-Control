@@ -18,57 +18,15 @@ import {
 } from "@/components/ui/select";
 import { useListDataSources, useGetCurrentUser, useQueryDataSource } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
+import {
+  type JourneyConfig,
+  COLORS,
+  loadJourneyConfigs,
+  saveJourneyConfigs,
+  newConfig,
+} from "@/lib/journey-configs";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type JourneyConfigType = "sql" | "manual";
-
-export interface JourneyConfig {
-  id: string;
-  name: string;
-  color: string;
-  type: JourneyConfigType;
-  sql?: string;
-  dataSourceId?: number;
-  /** resolved account IDs — populated after running SQL or from manual list */
-  accountIds: string[];
-  /** column from SQL results that maps to accountId */
-  accountColumn?: string;
-  enabled: boolean;
-  lastRunAt?: string;
-  lastRunError?: string;
-}
-
-const COLORS = [
-  "#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444",
-  "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
-];
-
-const CONFIG_KEY = "mc-journey-configs-v2";
-
-export function loadJourneyConfigs(): JourneyConfig[] {
-  try {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveJourneyConfigs(cfgs: JourneyConfig[]) {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(cfgs));
-}
-
-function newConfig(idx: number): JourneyConfig {
-  return {
-    id: crypto.randomUUID(),
-    name: `Group ${idx + 1}`,
-    color: COLORS[idx % COLORS.length],
-    type: "manual",
-    sql: "",
-    accountIds: [],
-    accountColumn: "bancan",
-    enabled: true,
-  };
-}
+export type { JourneyConfig } from "@/lib/journey-configs";
 
 // ─── Config Card ──────────────────────────────────────────────────────────────
 
@@ -115,6 +73,9 @@ function ConfigCard({
           onChange({
             ...config,
             accountIds: ids,
+            rawRows: result.rows,
+            rawColumns: result.columns,
+            rowCount: result.rowCount,
             lastRunAt: new Date().toISOString(),
             lastRunError: undefined,
           });
