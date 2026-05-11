@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Mission Control Customer Journey Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: tenants
+    description: Tenant management
+  - name: users
+    description: User and role management
+  - name: journeys
+    description: Customer journey management
+  - name: journey-nodes
+    description: Journey node management
+  - name: data-sources
+    description: Data source connector management
+  - name: dashboard
+    description: Dashboard and analytics
+  - name: activity
+    description: Activity and audit logs
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +38,1252 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Tenants ────────────────────────────────────────────────────────────────
+  /tenants:
+    get:
+      operationId: listTenants
+      tags: [tenants]
+      summary: List all tenants
+      responses:
+        "200":
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tenant"
+    post:
+      operationId: createTenant
+      tags: [tenants]
+      summary: Create a tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+
+  /tenants/{id}:
+    get:
+      operationId: getTenant
+      tags: [tenants]
+      summary: Get tenant by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTenant
+      tags: [tenants]
+      summary: Update tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+    delete:
+      operationId: deleteTenant
+      tags: [tenants]
+      summary: Delete tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Users ──────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users (optionally filtered by tenantId)
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create/register a user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/me:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: Get current authenticated user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Data Sources ───────────────────────────────────────────────────────────
+  /data-sources:
+    get:
+      operationId: listDataSources
+      tags: [data-sources]
+      summary: List data sources for a tenant
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of data sources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DataSource"
+    post:
+      operationId: createDataSource
+      tags: [data-sources]
+      summary: Create a data source connector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataSourceInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSource"
+
+  /data-sources/{id}:
+    get:
+      operationId: getDataSource
+      tags: [data-sources]
+      summary: Get data source by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: DataSource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSource"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateDataSource
+      tags: [data-sources]
+      summary: Update data source
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataSourceUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSource"
+    delete:
+      operationId: deleteDataSource
+      tags: [data-sources]
+      summary: Delete data source
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /data-sources/{id}/test:
+    post:
+      operationId: testDataSourceConnection
+      tags: [data-sources]
+      summary: Test data source connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  # ── Journeys ───────────────────────────────────────────────────────────────
+  /journeys:
+    get:
+      operationId: listJourneys
+      tags: [journeys]
+      summary: List journeys
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of journeys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyListResponse"
+    post:
+      operationId: createJourney
+      tags: [journeys]
+      summary: Create a journey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+
+  /journeys/{id}:
+    get:
+      operationId: getJourney
+      tags: [journeys]
+      summary: Get journey by ID with its nodes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Journey with nodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateJourney
+      tags: [journeys]
+      summary: Update journey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+    delete:
+      operationId: deleteJourney
+      tags: [journeys]
+      summary: Delete journey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /journeys/{id}/suspend:
+    post:
+      operationId: suspendJourney
+      tags: [journeys]
+      summary: Suspend a journey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyActionInput"
+      responses:
+        "200":
+          description: Suspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+
+  /journeys/{id}/resume:
+    post:
+      operationId: resumeJourney
+      tags: [journeys]
+      summary: Resume a suspended journey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyActionInput"
+      responses:
+        "200":
+          description: Resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Journey"
+
+  # ── Journey Nodes ──────────────────────────────────────────────────────────
+  /journey-nodes:
+    get:
+      operationId: listJourneyNodes
+      tags: [journey-nodes]
+      summary: List nodes for a journey
+      parameters:
+        - name: journeyId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JourneyNode"
+    post:
+      operationId: createJourneyNode
+      tags: [journey-nodes]
+      summary: Create a journey node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyNodeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyNode"
+
+  /journey-nodes/{id}:
+    get:
+      operationId: getJourneyNode
+      tags: [journey-nodes]
+      summary: Get journey node by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Journey node
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyNode"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateJourneyNode
+      tags: [journey-nodes]
+      summary: Update journey node
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JourneyNodeUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JourneyNode"
+    delete:
+      operationId: deleteJourneyNode
+      tags: [journey-nodes]
+      summary: Delete journey node
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── Activity ───────────────────────────────────────────────────────────────
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [activity]
+      summary: List recent activity events
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: journeyId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+    post:
+      operationId: createActivityEvent
+      tags: [activity]
+      summary: Create an activity event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityEventInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityEvent"
+
+  # ── Dashboard / Wow endpoints ──────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/health:
+    get:
+      operationId: getSystemHealth
+      tags: [dashboard]
+      summary: Get system health and latency metrics
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: System health
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemHealth"
+
+  /dashboard/journey-status-breakdown:
+    get:
+      operationId: getJourneyStatusBreakdown
+      tags: [dashboard]
+      summary: Get journey counts grouped by status
+      parameters:
+        - name: tenantId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Status breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusCount"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    # ── Tenant ────────────────────────────────────────────────────────────────
+    Tenant:
+      type: object
+      required: [id, name, slug, plan, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+          enum: [starter, professional, enterprise]
+        isActive:
+          type: boolean
+        settings:
+          type: ["object", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TenantInput:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        plan:
+          type: string
+          enum: [starter, professional, enterprise]
+        settings:
+          type: object
+
+    TenantUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        plan:
+          type: string
+          enum: [starter, professional, enterprise]
+        isActive:
+          type: boolean
+        settings:
+          type: object
+
+    # ── User ─────────────────────────────────────────────────────────────────
+    User:
+      type: object
+      required: [id, clerkId, email, role, tenantId, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [superadmin, admin, operator, viewer]
+        tenantId:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserInput:
+      type: object
+      required: [clerkId, email, tenantId]
+      properties:
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          enum: [superadmin, admin, operator, viewer]
+        tenantId:
+          type: integer
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          enum: [superadmin, admin, operator, viewer]
+        isActive:
+          type: boolean
+
+    # ── Data Source ───────────────────────────────────────────────────────────
+    DataSource:
+      type: object
+      required: [id, name, type, tenantId, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [postgresql, mysql, oracle, athena, bigquery, snowflake, redshift, mongodb, kafka, elasticsearch, mssql, sqlite]
+        tenantId:
+          type: integer
+        status:
+          type: string
+          enum: [connected, disconnected, error, testing]
+        host:
+          type: ["string", "null"]
+        port:
+          type: ["integer", "null"]
+        database:
+          type: ["string", "null"]
+        username:
+          type: ["string", "null"]
+        region:
+          type: ["string", "null"]
+        catalog:
+          type: ["string", "null"]
+        workgroup:
+          type: ["string", "null"]
+        project:
+          type: ["string", "null"]
+        dataset:
+          type: ["string", "null"]
+        warehouse:
+          type: ["string", "null"]
+        account:
+          type: ["string", "null"]
+        extraConfig:
+          type: ["object", "null"]
+        lastTestedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DataSourceInput:
+      type: object
+      required: [name, type, tenantId]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [postgresql, mysql, oracle, athena, bigquery, snowflake, redshift, mongodb, kafka, elasticsearch, mssql, sqlite]
+        tenantId:
+          type: integer
+        host:
+          type: string
+        port:
+          type: integer
+        database:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        region:
+          type: string
+        catalog:
+          type: string
+        workgroup:
+          type: string
+        project:
+          type: string
+        dataset:
+          type: string
+        warehouse:
+          type: string
+        account:
+          type: string
+        extraConfig:
+          type: object
+
+    DataSourceUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        host:
+          type: string
+        port:
+          type: integer
+        database:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        region:
+          type: string
+        catalog:
+          type: string
+        workgroup:
+          type: string
+        project:
+          type: string
+        dataset:
+          type: string
+        warehouse:
+          type: string
+        account:
+          type: string
+        extraConfig:
+          type: object
+
+    ConnectionTestResult:
+      type: object
+      required: [success, message, latencyMs]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        latencyMs:
+          type: ["integer", "null"]
+
+    # ── Journey ───────────────────────────────────────────────────────────────
+    Journey:
+      type: object
+      required: [id, externalId, accountId, tenantId, status, healthStatus, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        externalId:
+          type: string
+        accountId:
+          type: string
+        tenantId:
+          type: integer
+        name:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [activated, suspended, completed, failed, pending]
+        healthStatus:
+          type: string
+          enum: [healthy, degraded, critical, unknown]
+        suspendReason:
+          type: ["string", "null"]
+          enum: [non_pay, change, fraud, requested, null]
+        latencyMs:
+          type: ["integer", "null"]
+        dataSourceId:
+          type: ["integer", "null"]
+        metadata:
+          type: ["object", "null"]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    JourneyListResponse:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Journey"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    JourneyDetail:
+      type: object
+      required: [journey, nodes]
+      properties:
+        journey:
+          $ref: "#/components/schemas/Journey"
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/JourneyNode"
+
+    JourneyInput:
+      type: object
+      required: [externalId, accountId, tenantId]
+      properties:
+        externalId:
+          type: string
+        accountId:
+          type: string
+        tenantId:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+          enum: [activated, suspended, completed, failed, pending]
+        healthStatus:
+          type: string
+          enum: [healthy, degraded, critical, unknown]
+        suspendReason:
+          type: string
+          enum: [non_pay, change, fraud, requested]
+        dataSourceId:
+          type: integer
+        metadata:
+          type: object
+        startedAt:
+          type: string
+          format: date-time
+
+    JourneyUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [activated, suspended, completed, failed, pending]
+        healthStatus:
+          type: string
+          enum: [healthy, degraded, critical, unknown]
+        suspendReason:
+          type: string
+          enum: [non_pay, change, fraud, requested]
+        latencyMs:
+          type: integer
+        metadata:
+          type: object
+
+    JourneyActionInput:
+      type: object
+      properties:
+        reason:
+          type: string
+        notes:
+          type: string
+
+    # ── Journey Node ──────────────────────────────────────────────────────────
+    JourneyNode:
+      type: object
+      required: [id, journeyId, name, nodeType, status, positionX, positionY, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        journeyId:
+          type: integer
+        name:
+          type: string
+        nodeType:
+          type: string
+          enum: [trigger, check, integration, action, condition, end]
+        status:
+          type: string
+          enum: [pending, running, passed, failed, skipped]
+        positionX:
+          type: number
+        positionY:
+          type: number
+        config:
+          type: ["object", "null"]
+        parentNodeId:
+          type: ["integer", "null"]
+        systemCount:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    JourneyNodeInput:
+      type: object
+      required: [journeyId, name, nodeType, positionX, positionY]
+      properties:
+        journeyId:
+          type: integer
+        name:
+          type: string
+        nodeType:
+          type: string
+          enum: [trigger, check, integration, action, condition, end]
+        status:
+          type: string
+          enum: [pending, running, passed, failed, skipped]
+        positionX:
+          type: number
+        positionY:
+          type: number
+        config:
+          type: object
+        parentNodeId:
+          type: integer
+        systemCount:
+          type: integer
+
+    JourneyNodeUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, passed, failed, skipped]
+        positionX:
+          type: number
+        positionY:
+          type: number
+        config:
+          type: object
+        systemCount:
+          type: integer
+
+    # ── Activity ──────────────────────────────────────────────────────────────
+    ActivityEvent:
+      type: object
+      required: [id, tenantId, eventType, description, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        journeyId:
+          type: ["integer", "null"]
+        userId:
+          type: ["integer", "null"]
+        eventType:
+          type: string
+          enum: [journey_created, journey_suspended, journey_resumed, journey_completed, journey_failed, user_login, data_source_connected, data_source_error, node_failed, node_passed]
+        description:
+          type: string
+        metadata:
+          type: ["object", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    ActivityEventInput:
+      type: object
+      required: [tenantId, eventType, description]
+      properties:
+        tenantId:
+          type: integer
+        journeyId:
+          type: integer
+        userId:
+          type: integer
+        eventType:
+          type: string
+          enum: [journey_created, journey_suspended, journey_resumed, journey_completed, journey_failed, user_login, data_source_connected, data_source_error, node_failed, node_passed]
+        description:
+          type: string
+        metadata:
+          type: object
+
+    # ── Dashboard / Wow ────────────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      required: [totalJourneys, activeJourneys, suspendedJourneys, failedJourneys, completedJourneys, totalDataSources, connectedDataSources, totalUsers, recentActivityCount]
+      properties:
+        totalJourneys:
+          type: integer
+        activeJourneys:
+          type: integer
+        suspendedJourneys:
+          type: integer
+        failedJourneys:
+          type: integer
+        completedJourneys:
+          type: integer
+        totalDataSources:
+          type: integer
+        connectedDataSources:
+          type: integer
+        totalUsers:
+          type: integer
+        recentActivityCount:
+          type: integer
+
+    SystemHealth:
+      type: object
+      required: [status, latencyMs, uptime, lastCheckedAt]
+      properties:
+        status:
+          type: string
+          enum: [optimal, degraded, critical]
+        latencyMs:
+          type: integer
+        uptime:
+          type: number
+        lastCheckedAt:
+          type: string
+          format: date-time
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceHealth"
+
+    ServiceHealth:
+      type: object
+      required: [name, status, latencyMs]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [up, down, degraded]
+        latencyMs:
+          type: integer
+
+    StatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
