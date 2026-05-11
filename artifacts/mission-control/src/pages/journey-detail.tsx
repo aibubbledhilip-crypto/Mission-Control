@@ -102,14 +102,9 @@ export default function JourneyDetail({ params }: { params: { id: string } }) {
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
 
-  const { data: journey, isLoading: journeyLoading } = useGetJourney(id, {
+  const { data: detail, isLoading } = useGetJourney(id, {
     query: { enabled: !!id, queryKey: getGetJourneyQueryKey(id) }
   });
-
-  const { data: nodesData, isLoading: nodesLoading } = useListJourneyNodes(
-    { journeyId: id },
-    { query: { enabled: !!id, queryKey: getListJourneyNodesQueryKey({ journeyId: id }) } }
-  );
 
   const suspendMutation = useSuspendJourney();
   const resumeMutation = useResumeJourney();
@@ -137,15 +132,17 @@ export default function JourneyDetail({ params }: { params: { id: string } }) {
     );
   };
 
-  if (journeyLoading || nodesLoading) {
+  if (isLoading) {
     return <div className="p-8"><Skeleton className="h-[600px] w-full bg-card/50 rounded-xl" /></div>;
   }
 
-  if (!journey) {
+  if (!detail) {
     return <div className="p-8 text-center">Journey not found</div>;
   }
 
-  const selectedNode = selectedNodeId ? nodesData?.items?.find(n => n.id === selectedNodeId) : null;
+  const journey = detail.journey;
+  const nodes = detail.nodes ?? [];
+  const selectedNode = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
 
   return (
     <div className="h-[calc(100vh-4rem-48px)] flex flex-col -m-6 md:-m-8">
@@ -208,7 +205,7 @@ export default function JourneyDetail({ params }: { params: { id: string } }) {
           </div>
           
           <div className="w-full h-full overflow-auto" style={{ transform: `scale(${zoom/100})`, transformOrigin: 'top left' }}>
-             <FlowCanvas nodes={nodesData?.items || []} onNodeClick={setSelectedNodeId} selectedNodeId={selectedNodeId} />
+             <FlowCanvas nodes={nodes} onNodeClick={setSelectedNodeId} selectedNodeId={selectedNodeId} />
           </div>
         </div>
 

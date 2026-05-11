@@ -19,6 +19,7 @@ import Tenants from "@/pages/tenants";
 import Users from "@/pages/users";
 import Settings from "@/pages/settings";
 import Activity from "@/pages/activity";
+import Configuration from "@/pages/configuration";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -164,12 +165,13 @@ function ClerkProviderWithRoutes() {
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
           <Route path="/journeys"><ProtectedRoute component={Journeys} /></Route>
-          <Route path="/journeys/:id">{(params) => <ProtectedRoute component={JourneyDetail} params={params} />}</Route>
+          <Route path="/journeys/:id">{(params) => <ProtectedRoute component={JourneyDetail} params={params as Record<string, string>} />}</Route>
           <Route path="/data-sources"><ProtectedRoute component={DataSources} /></Route>
           <Route path="/tenants"><ProtectedRoute component={Tenants} /></Route>
           <Route path="/users"><ProtectedRoute component={Users} /></Route>
           <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
           <Route path="/activity"><ProtectedRoute component={Activity} /></Route>
+          <Route path="/configuration"><ProtectedRoute component={Configuration} /></Route>
           <Route component={NotFound} />
         </Switch>
       </QueryClientProvider>
