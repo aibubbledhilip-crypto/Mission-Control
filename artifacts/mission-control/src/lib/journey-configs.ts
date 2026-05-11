@@ -2,7 +2,27 @@ export type JourneyConfigType = "sql" | "manual";
 export type NodeIcon =
   | "account" | "salesforce" | "matrixx" | "aria" | "oracle"
   | "database" | "api" | "server" | "cloud" | "shield" | "check";
-export type NodeValidation = "rowCount > 0" | "rowCount === 0";
+
+/**
+ * Structured column-value validation: pass when the first result row's
+ * `column` value IS (==) or is NOT (!=) in `values` (case-insensitive).
+ */
+export interface NodeColumnValidation {
+  type: "columnValue";
+  /** Column in the SQL result to inspect */
+  column: string;
+  /** == → pass if value IS in list; != → pass if value is NOT in list */
+  operator: "==" | "!=";
+  /** Expected value(s) — case-insensitive OR match */
+  values: string[];
+}
+
+export type NodeValidation = "rowCount > 0" | "rowCount === 0" | NodeColumnValidation;
+
+/** Type guard */
+export function isColumnValidation(v: NodeValidation): v is NodeColumnValidation {
+  return typeof v === "object" && v !== null && (v as NodeColumnValidation).type === "columnValue";
+}
 
 export interface FlowNode {
   id: string;

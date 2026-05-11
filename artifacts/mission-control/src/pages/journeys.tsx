@@ -28,12 +28,15 @@ import {
   CheckCircle2, XCircle, GitBranch, SlidersHorizontal,
 } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import {
   loadJourneyConfigs,
   layoutFlowNodes,
   resolveActiveNodes,
+  isColumnValidation,
   type JourneyConfig,
   type FlowNode,
+  type NodeValidation,
   NODE_SIZE,
   NODE_RADIUS,
 } from "@/lib/journey-configs";
@@ -49,6 +52,32 @@ interface NodeResult {
   rowCount?: number;
   rows?: Record<string, string>[];
   error?: string;
+  /** For columnValue validation: which column was inspected */
+  checkedColumn?: string;
+  /** For columnValue validation: actual value from the first result row */
+  checkedValue?: string;
+}
+
+// ─── Validation Evaluation ────────────────────────────────────────────────────
+
+function evaluateValidation(
+  validation: NodeValidation,
+  rowCount: number,
+  rows: Record<string, string>[]
+): { passed: boolean; checkedColumn?: string; checkedValue?: string } {
+  if (typeof validation === "string") {
+    const passed = validation === "rowCount > 0" ? rowCount > 0 : rowCount === 0;
+    return { passed };
+  }
+  if (isColumnValidation(validation)) {
+    if (rows.length === 0) return { passed: false, checkedColumn: validation.column, checkedValue: undefined };
+    const actualVal = rows[0][validation.column] ?? "";
+    const actualNorm = actualVal.toLowerCase().trim();
+    const matches = validation.values.some(v => v.toLowerCase().trim() === actualNorm);
+    const passed = validation.operator === "==" ? matches : !matches;
+    return { passed, checkedColumn: validation.column, checkedValue: actualVal };
+  }
+  return { passed: false };
 }
 
 // ─── SQL Substitution ─────────────────────────────────────────────────────────
@@ -232,8 +261,9 @@ function JourneyFlowCanvas({
         }
         const result = await resp.json();
         const rowCount: number = result.rowCount ?? 0;
-        const passed = node.validation === "rowCount > 0" ? rowCount > 0 : node.validation === "rowCount === 0" ? rowCount === 0 : rowCount > 0;
-        setNodeResults(r => ({ ...r, [node.id]: { status: passed ? "pass" : "fail", rowCount, rows: result.rows?.slice(0, 5) } }));
+        const rows: Record<string, string>[] = result.rows?.slice(0, 5) ?? [];
+        const { passed, checkedColumn, checkedValue } = evaluateValidation(node.validation, rowCount, rows);
+        setNodeResults(r => ({ ...r, [node.id]: { status: passed ? "pass" : "fail", rowCount, rows, checkedColumn, checkedValue } }));
       } catch (err: any) {
         if (runRef.current !== runId) return;
         setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err?.message ?? "Network error" } }));
@@ -572,9 +602,32 @@ function JourneyFlowCanvas({
               {/* Validation rule */}
               <div>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Pass Condition</div>
-                <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
-                  {selectedNode.validation}
-                </div>
+                {isColumnValidation(selectedNode.validation) ? (
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
+                      {selectedNode.validation.column}{" "}
+                      {selectedNode.validation.operator === "==" ? "=" : "≠"}{" "}
+                      [{selectedNode.validation.values.join(", ")}]
+                    </div>
+                    {selectedResult?.checkedColumn !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">Actual value:</span>
+                        <span className={cn(
+                          "text-xs font-mono px-2 py-0.5 rounded border",
+                          selectedResult.status === "pass"
+                            ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                            : "text-red-400 bg-red-500/10 border-red-500/20"
+                        )}>
+                          {selectedResult.checkedValue ?? <em className="text-muted-foreground not-italic">null / missing</em>}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
+                    {selectedNode.validation}
+                  </div>
+                )}
               </div>
 
               {/* Parent */}

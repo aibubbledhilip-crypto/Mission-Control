@@ -25,6 +25,9 @@ import {
   type FlowNode,
   type FlowCondition,
   type NodeIcon,
+  type NodeValidation,
+  type NodeColumnValidation,
+  isColumnValidation,
   COLORS,
   loadJourneyConfigs,
   saveJourneyConfigs,
@@ -55,6 +58,103 @@ export const ICON_OPTIONS: { id: NodeIcon; label: string; Icon: React.FC<{ class
 export const ICON_MAP: Record<NodeIcon, React.FC<{ className?: string }>> = Object.fromEntries(
   ICON_OPTIONS.map(o => [o.id, o.Icon])
 ) as Record<NodeIcon, React.FC<{ className?: string }>>;
+
+// ─── Node Column Validation Sub-Form ─────────────────────────────────────────
+
+function NodeColumnValidationForm({
+  cv,
+  node,
+  onChange,
+}: {
+  cv: NodeColumnValidation;
+  node: FlowNode;
+  onChange: (updated: FlowNode) => void;
+}) {
+  const [manualVal, setManualVal] = useState("");
+
+  function addVal() {
+    const v = manualVal.trim();
+    if (v && !cv.values.some(x => x.toLowerCase() === v.toLowerCase())) {
+      onChange({ ...node, validation: { ...cv, values: [...cv.values, v] } });
+    }
+    setManualVal("");
+  }
+
+  return (
+    <div className="space-y-2 bg-black/20 rounded-lg p-3 border border-border/30">
+      {/* Column + Operator */}
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Label className="text-[10px] text-muted-foreground mb-1 block">Column</Label>
+          <Input
+            value={cv.column}
+            onChange={e => onChange({ ...node, validation: { ...cv, column: e.target.value } })}
+            className="h-7 bg-black/50 border-border text-white text-xs font-mono"
+            placeholder="e.g. acct_status"
+          />
+        </div>
+        <div className="shrink-0">
+          <Label className="text-[10px] text-muted-foreground mb-1 block">Operator</Label>
+          <Select
+            value={cv.operator}
+            onValueChange={v => onChange({ ...node, validation: { ...cv, operator: v as "==" | "!=" } })}
+          >
+            <SelectTrigger className="h-7 w-20 bg-black/50 border-border text-white text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              <SelectItem value="==" className="text-xs font-mono">= equals</SelectItem>
+              <SelectItem value="!=" className="text-xs font-mono">≠ not</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Expected values (pills) */}
+      <div>
+        <Label className="text-[10px] text-muted-foreground mb-1 block">Expected value(s) — any match = PASS</Label>
+        <div className="flex flex-wrap gap-1 min-h-7 bg-black/50 border border-border rounded-md px-2 py-1.5 mb-1.5">
+          {cv.values.length === 0 && (
+            <span className="text-[11px] text-muted-foreground/40 self-center">No values yet</span>
+          )}
+          {cv.values.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
+              {v}
+              <button
+                onClick={() => onChange({ ...node, validation: { ...cv, values: cv.values.filter(x => x !== v) } })}
+                className="hover:text-red-400"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-1.5">
+          <Input
+            value={manualVal}
+            onChange={e => setManualVal(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addVal(); } }}
+            className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
+            placeholder="type value, Enter to add"
+          />
+          <Button
+            variant="outline" size="sm"
+            className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0"
+            onClick={addVal}
+            disabled={!manualVal.trim()}
+          >
+            Add
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">
+        Node is GREEN when <code className="text-primary font-mono">{cv.column || "column"}</code>{" "}
+        {cv.operator === "==" ? "matches one of the expected values" : "does not match any of the expected values"}.
+      </p>
+    </div>
+  );
+}
 
 // ─── Node Editor Row ──────────────────────────────────────────────────────────
 
@@ -220,27 +320,49 @@ function NodeEditorRow({
           {/* Validation */}
           <div className="grid gap-1.5">
             <Label className="text-xs">Pass Condition</Label>
-            <div className="flex gap-2">
-              {(["rowCount > 0", "rowCount === 0"] as const).map(val => (
-                <button
-                  key={val}
-                  onClick={() => onChange({ ...node, validation: val })}
-                  className={cn(
-                    "flex-1 px-3 py-1.5 rounded-md border text-xs font-mono transition-all",
-                    node.validation === val
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                      : "border-border text-muted-foreground hover:text-white hover:bg-white/5"
-                  )}
-                >
-                  {val}
-                </button>
-              ))}
+
+            {/* Mode selector */}
+            <div className="flex gap-1.5">
+              {(["rowCount > 0", "rowCount === 0", "columnValue"] as const).map(mode => {
+                const active = mode === "columnValue"
+                  ? isColumnValidation(node.validation)
+                  : node.validation === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      if (mode === "columnValue") {
+                        const cv: NodeColumnValidation = isColumnValidation(node.validation)
+                          ? node.validation
+                          : { type: "columnValue", column: "", operator: "==", values: [] };
+                        onChange({ ...node, validation: cv });
+                      } else {
+                        onChange({ ...node, validation: mode });
+                      }
+                    }}
+                    className={cn(
+                      "flex-1 px-2 py-1.5 rounded-md border text-[11px] font-medium transition-all",
+                      active
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                        : "border-border text-muted-foreground hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    {mode === "rowCount > 0" ? "Row exists" : mode === "rowCount === 0" ? "No rows" : "Column value"}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              {node.validation === "rowCount > 0"
-                ? "Node is GREEN when the query returns at least one row."
-                : "Node is GREEN when the query returns zero rows."}
-            </p>
+
+            {/* Column value sub-form */}
+            {isColumnValidation(node.validation) ? (
+              <NodeColumnValidationForm cv={node.validation} node={node} onChange={onChange} />
+            ) : (
+              <p className="text-[10px] text-muted-foreground">
+                {node.validation === "rowCount > 0"
+                  ? "Node is GREEN when the query returns at least one row."
+                  : "Node is GREEN when the query returns zero rows."}
+              </p>
+            )}
           </div>
         </div>
       )}
