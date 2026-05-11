@@ -255,6 +255,7 @@ function FlowConditionCard({
   dataSources,
   defaultDataSourceId,
   availableColumns,
+  rawRows,
 }: {
   condition: FlowCondition;
   onChange: (updated: FlowCondition) => void;
@@ -262,6 +263,7 @@ function FlowConditionCard({
   dataSources: any[];
   defaultDataSourceId?: number;
   availableColumns: string[];
+  rawRows: Record<string, string>[];
 }) {
   const [expanded, setExpanded] = useState(true);
   const nodes = condition.flowNodes;
@@ -276,6 +278,18 @@ function FlowConditionCard({
     onChange({ ...condition, flowNodes: nodes.filter(n => n.id !== id) });
   }
 
+  // Get distinct non-empty values for a column from the SQL result rows
+  function distinctValues(col: string): string[] {
+    if (!col || rawRows.length === 0) return [];
+    const seen = new Set<string>();
+    for (const row of rawRows) {
+      const v = row[col];
+      if (v !== undefined && v !== null && v !== "") seen.add(String(v));
+    }
+    return Array.from(seen).sort();
+  }
+
+  // Column selector — populated from rawColumns
   const ColInput = ({ value, onChange: onChg, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) =>
     availableColumns.length > 0 ? (
       <Select value={value || "__none__"} onValueChange={v => onChg(v === "__none__" ? "" : v)}>
@@ -297,6 +311,32 @@ function FlowConditionCard({
         placeholder={placeholder ?? "column"}
       />
     );
+
+  // Value selector — populated from distinct values in that column from rawRows
+  const ValInput = ({ col, value, onChange: onChg, disabled }: { col: string; value: string; onChange: (v: string) => void; disabled?: boolean }) => {
+    const opts = distinctValues(col);
+    return opts.length > 0 ? (
+      <Select value={value || "__none__"} onValueChange={v => onChg(v === "__none__" ? "" : v)} disabled={disabled}>
+        <SelectTrigger className="flex-1 h-7 bg-black/50 border-border text-xs text-white">
+          <SelectValue placeholder="select value…" />
+        </SelectTrigger>
+        <SelectContent className="bg-card border-border max-h-56">
+          <SelectItem value="__none__" className="text-xs text-muted-foreground">— select —</SelectItem>
+          {opts.map(opt => (
+            <SelectItem key={opt} value={opt} className="text-xs font-mono">{opt}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : (
+      <Input
+        value={value}
+        onChange={e => onChg(e.target.value)}
+        className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
+        placeholder={rawRows.length === 0 ? "run group SQL first" : "value"}
+        disabled={disabled}
+      />
+    );
+  };
 
   const summary = condition.matchColumn && condition.matchValue
     ? `${condition.matchColumn} = "${condition.matchValue}"${condition.matchColumn2 && condition.matchValue2 ? ` AND ${condition.matchColumn2} = "${condition.matchValue2}"` : ""}`
@@ -336,27 +376,16 @@ function FlowConditionCard({
             <Label className="text-xs text-muted-foreground">Match when (all must be true)</Label>
             {/* Primary */}
             <div className="flex items-center gap-2">
-              <ColInput value={condition.matchColumn} onChange={v => onChange({ ...condition, matchColumn: v })} placeholder="column" />
+              <ColInput value={condition.matchColumn} onChange={v => onChange({ ...condition, matchColumn: v, matchValue: "" })} placeholder="column" />
               <span className="text-xs text-muted-foreground shrink-0">=</span>
-              <Input
-                value={condition.matchValue}
-                onChange={e => onChange({ ...condition, matchValue: e.target.value })}
-                className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
-                placeholder="value (case-insensitive)"
-              />
+              <ValInput col={condition.matchColumn} value={condition.matchValue} onChange={v => onChange({ ...condition, matchValue: v })} />
             </div>
             {/* Secondary (optional AND) */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-muted-foreground shrink-0 w-6 text-right">AND</span>
-              <ColInput value={condition.matchColumn2 ?? ""} onChange={v => onChange({ ...condition, matchColumn2: v || undefined, matchValue2: v ? condition.matchValue2 : undefined })} placeholder="(optional column)" />
+              <ColInput value={condition.matchColumn2 ?? ""} onChange={v => onChange({ ...condition, matchColumn2: v || undefined, matchValue2: undefined })} placeholder="(optional column)" />
               <span className="text-xs text-muted-foreground shrink-0">=</span>
-              <Input
-                value={condition.matchValue2 ?? ""}
-                onChange={e => onChange({ ...condition, matchValue2: e.target.value || undefined })}
-                className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
-                placeholder="(optional value)"
-                disabled={!condition.matchColumn2}
-              />
+              <ValInput col={condition.matchColumn2 ?? ""} value={condition.matchValue2 ?? ""} onChange={v => onChange({ ...condition, matchValue2: v || undefined })} disabled={!condition.matchColumn2} />
             </div>
           </div>
 
@@ -729,6 +758,7 @@ function ConfigCard({
                     dataSources={dataSources}
                     defaultDataSourceId={config.dataSourceId}
                     availableColumns={config.rawColumns ?? []}
+                    rawRows={config.rawRows ?? []}
                   />
                 ))}
                 <p className="text-[10px] text-muted-foreground">
