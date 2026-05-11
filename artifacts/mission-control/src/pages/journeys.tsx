@@ -174,16 +174,22 @@ function JourneyFlowCanvas({
   const accountCol = config.accountColumn ?? "bancan";
   const bancan = selectedRow[accountCol] ?? Object.values(selectedRow)[0] ?? "";
 
+  // Keep a stable ref to the current row so async callbacks always see the latest values
+  // without adding the whole row object to effect deps (avoids re-running on every localStorage poll)
+  const selectedRowRef = useRef(selectedRow);
+  selectedRowRef.current = selectedRow;
+
   // Display header values
   const idCol = (config.rawColumns ?? []).find(c => c.toLowerCase().includes("order")) ?? (config.rawColumns ?? [])[0] ?? "";
   const displayId = idCol ? selectedRow[idCol] : bancan;
   const statusCol = (config.rawColumns ?? []).find(c => c.toLowerCase() === "status") ?? "";
   const statusVal = statusCol ? selectedRow[statusCol] : null;
 
-  // Run all node queries when selectedRow changes
+  // Run all node queries when the account ID or config changes (NOT on every object reference change)
   useEffect(() => {
     if (flowNodes.length === 0) return;
     const runId = ++runRef.current;
+    const row = selectedRowRef.current;
 
     // Initialize all nodes to loading
     const initial: Record<string, NodeResult> = {};
@@ -193,7 +199,7 @@ function JourneyFlowCanvas({
     setNodeResults(initial);
     setSelectedNodeId(null);
 
-    // Run each node's SQL
+    // Run each node's SQL in parallel
     flowNodes.forEach(async (node) => {
       if (!node.sql?.trim()) return;
       const dsId = node.dataSourceId ?? config.dataSourceId;
@@ -204,7 +210,7 @@ function JourneyFlowCanvas({
         return;
       }
 
-      const sql = substituteVars(node.sql, selectedRow, accountCol);
+      const sql = substituteVars(node.sql, row, accountCol);
 
       try {
         const resp = await fetch(`/api/data-sources/${dsId}/query`, {
@@ -238,7 +244,8 @@ function JourneyFlowCanvas({
         setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err?.message ?? "Network error" } }));
       }
     });
-  }, [selectedRow, config.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Depend on the account ID string + config ID — stable across localStorage polls
+  }, [bancan, config.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedNode = selectedNodeId ? flowNodes.find(n => n.id === selectedNodeId) : null;
   const selectedResult = selectedNodeId ? nodeResults[selectedNodeId] : null;
