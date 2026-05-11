@@ -1,4 +1,22 @@
 export type JourneyConfigType = "sql" | "manual";
+export type NodeIcon =
+  | "account" | "salesforce" | "matrixx" | "aria" | "oracle"
+  | "database" | "api" | "server" | "cloud" | "shield" | "check";
+export type NodeValidation = "rowCount > 0" | "rowCount === 0";
+
+export interface FlowNode {
+  id: string;
+  name: string;
+  icon: NodeIcon;
+  /** null = root node */
+  parentNodeId: string | null;
+  /** SQL to run for this node — use {{bancan}} as account ID placeholder */
+  sql?: string;
+  /** If set, overrides the config-level dataSourceId for this node */
+  dataSourceId?: number;
+  /** How to determine pass/fail from query result */
+  validation: NodeValidation;
+}
 
 export interface JourneyConfig {
   id: string;
@@ -15,6 +33,8 @@ export interface JourneyConfig {
   lastRunAt?: string;
   lastRunError?: string;
   rowCount?: number;
+  /** User-defined flow nodes that appear in the journey canvas */
+  flowNodes?: FlowNode[];
 }
 
 const CONFIG_KEY = "mc-journey-configs-v2";
@@ -35,6 +55,18 @@ export const COLORS = [
   "#06b6d4", "#84cc16", "#f97316", "#ec4899", "#6366f1",
 ];
 
+export function newFlowNode(partial?: Partial<FlowNode>): FlowNode {
+  return {
+    id: crypto.randomUUID(),
+    name: "New Node",
+    icon: "database",
+    parentNodeId: null,
+    sql: "",
+    validation: "rowCount > 0",
+    ...partial,
+  };
+}
+
 export function newConfig(idx: number): JourneyConfig {
   return {
     id: crypto.randomUUID(),
@@ -45,5 +77,85 @@ export function newConfig(idx: number): JourneyConfig {
     accountIds: [],
     accountColumn: "bancan",
     enabled: true,
+    flowNodes: [],
+  };
+}
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+
+export const NODE_SIZE = 96;
+export const NODE_RADIUS = NODE_SIZE / 2;
+export const LAYER_X = 280;
+export const NODE_Y_SPACING = 150;
+export const CANVAS_PAD = 60;
+
+export interface NodePosition {
+  x: number;
+  y: number;
+  depth: number;
+}
+
+export function layoutFlowNodes(flowNodes: FlowNode[]): Record<string, NodePosition> {
+  if (flowNodes.length === 0) return {};
+
+  const childrenOf: Record<string, string[]> = {};
+  const roots: string[] = [];
+
+  flowNodes.forEach(n => {
+    if (!n.parentNodeId) {
+      roots.push(n.id);
+    } else {
+      childrenOf[n.parentNodeId] = [...(childrenOf[n.parentNodeId] ?? []), n.id];
+    }
+  });
+
+  // BFS to assign depth levels
+  const depth: Record<string, number> = {};
+  const queue = [...roots];
+  roots.forEach(r => { depth[r] = 0; });
+
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const children = childrenOf[id] ?? [];
+    children.forEach(c => {
+      if (depth[c] === undefined) {
+        depth[c] = depth[id] + 1;
+        queue.push(c);
+      }
+    });
+  }
+
+  // Group by depth
+  const byDepth: Record<number, string[]> = {};
+  Object.entries(depth).forEach(([id, d]) => {
+    byDepth[d] = [...(byDepth[d] ?? []), id];
+  });
+
+  const maxNodesPerLayer = Math.max(...Object.values(byDepth).map(ids => ids.length));
+  const canvasHeight = maxNodesPerLayer * NODE_Y_SPACING + NODE_SIZE + CANVAS_PAD * 2;
+
+  const positions: Record<string, NodePosition> = {};
+
+  Object.entries(byDepth).forEach(([depthStr, nodeIds]) => {
+    const d = parseInt(depthStr);
+    const x = CANVAS_PAD + d * LAYER_X;
+    const totalH = nodeIds.length * NODE_Y_SPACING;
+    const startY = (canvasHeight - totalH) / 2 + NODE_Y_SPACING / 2 - NODE_SIZE / 2;
+
+    nodeIds.forEach((id, i) => {
+      positions[id] = { x, y: startY + i * NODE_Y_SPACING, depth: d };
+    });
+  });
+
+  return positions;
+}
+
+export function canvasDimensions(positions: Record<string, NodePosition>): { width: number; height: number } {
+  if (Object.keys(positions).length === 0) return { width: 600, height: 400 };
+  const xs = Object.values(positions).map(p => p.x + NODE_SIZE);
+  const ys = Object.values(positions).map(p => p.y + NODE_SIZE + 36);
+  return {
+    width: Math.max(...xs) + CANVAS_PAD,
+    height: Math.max(...ys) + CANVAS_PAD,
   };
 }
