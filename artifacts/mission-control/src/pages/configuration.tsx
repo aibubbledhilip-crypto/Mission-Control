@@ -97,14 +97,15 @@ function NodeColumnValidationForm({
           <Label className="text-[10px] text-muted-foreground mb-1 block">Operator</Label>
           <Select
             value={cv.operator}
-            onValueChange={v => onChange({ ...node, validation: { ...cv, operator: v as "==" | "!=" } })}
+            onValueChange={v => onChange({ ...node, validation: { ...cv, operator: v as "==" | "!=" | "in" } })}
           >
-            <SelectTrigger className="h-7 w-20 bg-black/50 border-border text-white text-xs">
+            <SelectTrigger className="h-7 w-24 bg-black/50 border-border text-white text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-card border-border">
               <SelectItem value="==" className="text-xs font-mono">= equals</SelectItem>
-              <SelectItem value="!=" className="text-xs font-mono">≠ not</SelectItem>
+              <SelectItem value="!=" className="text-xs font-mono">≠ not equal</SelectItem>
+              <SelectItem value="in" className="text-xs font-mono">IN list</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -150,7 +151,7 @@ function NodeColumnValidationForm({
 
       <p className="text-[10px] text-muted-foreground">
         Node is GREEN when <code className="text-primary font-mono">{cv.column || "column"}</code>{" "}
-        {cv.operator === "==" ? "matches one of the expected values" : "does not match any of the expected values"}.
+        {cv.operator === "!=" ? "does not match any of the expected values" : "matches one of the expected values"}.
       </p>
     </div>
   );

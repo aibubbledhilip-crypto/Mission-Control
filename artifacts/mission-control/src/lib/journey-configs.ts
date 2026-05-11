@@ -11,8 +11,8 @@ export interface NodeColumnValidation {
   type: "columnValue";
   /** Column in the SQL result to inspect */
   column: string;
-  /** == → pass if value IS in list; != → pass if value is NOT in list */
-  operator: "==" | "!=";
+  /** == exact match; != not equal; in → value is one of the list */
+  operator: "==" | "!=" | "in";
   /** Expected value(s) — case-insensitive OR match */
   values: string[];
 }

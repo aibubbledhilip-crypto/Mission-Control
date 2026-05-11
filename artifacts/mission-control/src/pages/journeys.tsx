@@ -74,7 +74,8 @@ function evaluateValidation(
     const actualVal = rows[0][validation.column] ?? "";
     const actualNorm = actualVal.toLowerCase().trim();
     const matches = validation.values.some(v => v.toLowerCase().trim() === actualNorm);
-    const passed = validation.operator === "==" ? matches : !matches;
+    // == and in both pass when value IS in the list; != passes when NOT in the list
+    const passed = validation.operator === "!=" ? !matches : matches;
     return { passed, checkedColumn: validation.column, checkedValue: actualVal };
   }
   return { passed: false };
@@ -606,7 +607,7 @@ function JourneyFlowCanvas({
                   <div className="space-y-1.5">
                     <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
                       {selectedNode.validation.column}{" "}
-                      {selectedNode.validation.operator === "==" ? "=" : "≠"}{" "}
+                      {selectedNode.validation.operator === "==" ? "=" : selectedNode.validation.operator === "!=" ? "≠" : "IN"}{" "}
                       [{selectedNode.validation.values.join(", ")}]
                     </div>
                     {selectedResult?.checkedColumn !== undefined && (
