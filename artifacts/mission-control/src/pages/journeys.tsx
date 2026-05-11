@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Search, Filter, Route, ArrowRight, Play, Pause, AlertCircle } from "lucide-react";
+import { Search, Filter, Route, ArrowRight, Play, Pause, AlertCircle, Activity } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Journeys() {

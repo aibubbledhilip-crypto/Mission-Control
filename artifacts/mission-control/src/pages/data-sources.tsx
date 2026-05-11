@@ -136,7 +136,11 @@ export default function DataSources() {
                 <div className="space-y-2 text-sm mb-6">
                   {source.host && <div className="flex justify-between"><span className="text-muted-foreground">Host</span><span className="text-white font-mono">{source.host}:{source.port}</span></div>}
                   {source.database && <div className="flex justify-between"><span className="text-muted-foreground">Database</span><span className="text-white">{source.database}</span></div>}
+                  {source.region && <div className="flex justify-between"><span className="text-muted-foreground">Region</span><span className="text-white font-mono">{source.region}</span></div>}
+                  {source.catalog && <div className="flex justify-between"><span className="text-muted-foreground">Catalog</span><span className="text-white">{source.catalog}</span></div>}
+                  {source.workgroup && <div className="flex justify-between"><span className="text-muted-foreground">Workgroup</span><span className="text-white">{source.workgroup}</span></div>}
                   {source.project && <div className="flex justify-between"><span className="text-muted-foreground">Project</span><span className="text-white">{source.project}</span></div>}
+                  {source.account && <div className="flex justify-between"><span className="text-muted-foreground">Account</span><span className="text-white font-mono">{source.account}</span></div>}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => handleTest(source.id)} disabled={testMutation.isPending && testMutation.variables?.id === source.id} className="flex-1 bg-white/5 border-border hover:bg-white/10 hover:text-white">
@@ -176,6 +180,7 @@ export default function DataSources() {
                   <SelectItem value="postgresql">PostgreSQL</SelectItem>
                   <SelectItem value="mysql">MySQL</SelectItem>
                   <SelectItem value="oracle">Oracle</SelectItem>
+                  <SelectItem value="athena">AWS Athena</SelectItem>
                   <SelectItem value="snowflake">Snowflake</SelectItem>
                   <SelectItem value="bigquery">BigQuery</SelectItem>
                 </SelectContent>
@@ -211,6 +216,45 @@ export default function DataSources() {
               </>
             )}
             
+            {formData.type === 'athena' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="region">AWS Region</Label>
+                    <Input id="region" value={formData.region || ""} onChange={(e) => setFormData({...formData, region: e.target.value})} className="bg-black/50 border-border" placeholder="us-east-1" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="catalog">Data Catalog</Label>
+                    <Input id="catalog" value={formData.catalog || ""} onChange={(e) => setFormData({...formData, catalog: e.target.value})} className="bg-black/50 border-border" placeholder="AwsDataCatalog" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="workgroup">Workgroup</Label>
+                    <Input id="workgroup" value={formData.workgroup || ""} onChange={(e) => setFormData({...formData, workgroup: e.target.value})} className="bg-black/50 border-border" placeholder="primary" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="database">Database</Label>
+                    <Input id="database" value={formData.database || ""} onChange={(e) => setFormData({...formData, database: e.target.value})} className="bg-black/50 border-border" placeholder="analytics_db" />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="s3Output">S3 Output Location</Label>
+                  <Input id="s3Output" value={formData.s3OutputLocation || ""} onChange={(e) => setFormData({...formData, s3OutputLocation: e.target.value})} className="bg-black/50 border-border" placeholder="s3://bucket/query-results/" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="accessKeyId">Access Key ID</Label>
+                    <Input id="accessKeyId" value={formData.accessKeyId || ""} onChange={(e) => setFormData({...formData, accessKeyId: e.target.value})} className="bg-black/50 border-border" placeholder="AKIA..." />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="secretKey">Secret Access Key</Label>
+                    <Input type="password" id="secretKey" value={formData.secretKey || ""} onChange={(e) => setFormData({...formData, secretKey: e.target.value})} className="bg-black/50 border-border" />
+                  </div>
+                </div>
+              </>
+            )}
+
             {formData.type === 'snowflake' && (
               <>
                 <div className="grid gap-2">
@@ -221,7 +265,6 @@ export default function DataSources() {
                   <Label htmlFor="warehouse">Warehouse</Label>
                   <Input id="warehouse" value={formData.warehouse || ""} onChange={(e) => setFormData({...formData, warehouse: e.target.value})} className="bg-black/50 border-border" />
                 </div>
-                {/* username/password similar to above */}
               </>
             )}
           </div>

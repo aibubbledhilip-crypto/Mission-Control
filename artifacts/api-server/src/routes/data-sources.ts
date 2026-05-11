@@ -77,7 +77,13 @@ router.post("/data-sources/:id/test", async (req, res): Promise<void> => {
   const start = Date.now();
   // Simulate connection test — in production would attempt real connection
   const latencyMs = Math.floor(Math.random() * 80) + 20;
-  const success = source.status !== "error" && !!source.host;
+  // Cloud/serverless connectors (Athena, BigQuery, Snowflake) don't have a host
+  const cloudTypes = ["athena", "bigquery"];
+  const isCloud = cloudTypes.includes(source.type);
+  const hasCredentials = isCloud
+    ? !!(source.region || source.catalog || source.project)
+    : !!source.host;
+  const success = source.status !== "error" && hasCredentials;
   const latencyActual = Date.now() - start + latencyMs;
 
   await db.update(dataSourcesTable).set({
