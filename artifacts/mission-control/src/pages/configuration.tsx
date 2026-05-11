@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import {
   newConfig,
   newFlowNode,
   newFlowCondition,
+  toMatchArray,
 } from "@/lib/journey-configs";
 
 export type { JourneyConfig } from "@/lib/journey-configs";
@@ -312,34 +314,96 @@ function FlowConditionCard({
       />
     );
 
-  // Value selector — populated from distinct values in that column from rawRows
-  const ValInput = ({ col, value, onChange: onChg, disabled }: { col: string; value: string; onChange: (v: string) => void; disabled?: boolean }) => {
+  // Multi-value selector with pills + popover checkboxes (+ manual free-text entry)
+  const ValMultiSelect = ({ col, values, onChange: onChg, disabled }: {
+    col: string; values: string[]; onChange: (v: string[]) => void; disabled?: boolean;
+  }) => {
     const opts = distinctValues(col);
-    return opts.length > 0 ? (
-      <Select value={value || "__none__"} onValueChange={v => onChg(v === "__none__" ? "" : v)} disabled={disabled}>
-        <SelectTrigger className="flex-1 h-7 bg-black/50 border-border text-xs text-white">
-          <SelectValue placeholder="select value…" />
-        </SelectTrigger>
-        <SelectContent className="bg-card border-border max-h-56">
-          <SelectItem value="__none__" className="text-xs text-muted-foreground">— select —</SelectItem>
-          {opts.map(opt => (
-            <SelectItem key={opt} value={opt} className="text-xs font-mono">{opt}</SelectItem>
+    const [popOpen, setPopOpen] = useState(false);
+    const [manualVal, setManualVal] = useState("");
+
+    function toggle(v: string) {
+      const lv = v.toLowerCase();
+      if (values.some(x => x.toLowerCase() === lv)) onChg(values.filter(x => x.toLowerCase() !== lv));
+      else onChg([...values, v]);
+    }
+    function addManual() {
+      const v = manualVal.trim();
+      if (v && !values.some(x => x.toLowerCase() === v.toLowerCase())) onChg([...values, v]);
+      setManualVal("");
+    }
+
+    return (
+      <div className="flex-1 space-y-1.5">
+        {/* Pills */}
+        <div className="flex flex-wrap gap-1 min-h-7 bg-black/50 border border-border rounded-md px-2 py-1.5">
+          {values.length === 0 && (
+            <span className="text-[11px] text-muted-foreground/40 self-center">No values selected</span>
+          )}
+          {values.map(v => (
+            <span key={v} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
+              {v}
+              {!disabled && (
+                <button onClick={() => onChg(values.filter(x => x !== v))} className="hover:text-red-400 transition-colors">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </span>
           ))}
-        </SelectContent>
-      </Select>
-    ) : (
-      <Input
-        value={value}
-        onChange={e => onChg(e.target.value)}
-        className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
-        placeholder={rawRows.length === 0 ? "run group SQL first" : "value"}
-        disabled={disabled}
-      />
+        </div>
+        {/* Controls */}
+        {!disabled && (
+          <div className="flex items-center gap-1.5">
+            {opts.length > 0 && (
+              <Popover open={popOpen} onOpenChange={setPopOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0">
+                    <Plus className="w-3 h-3 mr-1" />Pick
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="bg-card border-border w-56 p-2" align="start">
+                  <p className="text-[10px] text-muted-foreground mb-1.5 font-medium">From SQL results ({opts.length} distinct)</p>
+                  <div className="space-y-0.5 max-h-52 overflow-y-auto">
+                    {opts.map(opt => {
+                      const checked = values.some(x => x.toLowerCase() === opt.toLowerCase());
+                      return (
+                        <label key={opt} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 cursor-pointer">
+                          <input type="checkbox" checked={checked} onChange={() => toggle(opt)} className="accent-primary w-3 h-3 shrink-0" />
+                          <span className="text-xs font-mono text-white truncate">{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            <Input
+              value={manualVal}
+              onChange={e => setManualVal(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addManual(); } }}
+              className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
+              placeholder={opts.length > 0 ? "or type custom value…" : "type value, Enter to add"}
+            />
+            <Button variant="outline" size="sm" className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0" onClick={addManual} disabled={!manualVal.trim()}>
+              Add
+            </Button>
+          </div>
+        )}
+      </div>
     );
   };
 
-  const summary = condition.matchColumn && condition.matchValue
-    ? `${condition.matchColumn} = "${condition.matchValue}"${condition.matchColumn2 && condition.matchValue2 ? ` AND ${condition.matchColumn2} = "${condition.matchValue2}"` : ""}`
+  function formatMatchValues(v: string | string[]): string {
+    const arr = toMatchArray(v);
+    if (arr.length === 0) return "(none)";
+    if (arr.length === 1) return `"${arr[0]}"`;
+    return `[${arr.slice(0, 3).map(x => `"${x}"`).join(", ")}${arr.length > 3 ? ` +${arr.length - 3}` : ""}]`;
+  }
+
+  const mv1 = toMatchArray(condition.matchValue);
+  const mv2 = toMatchArray(condition.matchValue2 ?? []);
+  const summary = condition.matchColumn && mv1.length > 0
+    ? `${condition.matchColumn} IN ${formatMatchValues(condition.matchValue)}${condition.matchColumn2 && mv2.length > 0 ? ` AND ${condition.matchColumn2} IN ${formatMatchValues(condition.matchValue2!)}` : ""}`
     : "No condition set";
 
   return (
@@ -374,18 +438,31 @@ function FlowConditionCard({
           {/* Match condition */}
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Match when (all must be true)</Label>
-            {/* Primary */}
-            <div className="flex items-center gap-2">
-              <ColInput value={condition.matchColumn} onChange={v => onChange({ ...condition, matchColumn: v, matchValue: "" })} placeholder="column" />
-              <span className="text-xs text-muted-foreground shrink-0">=</span>
-              <ValInput col={condition.matchColumn} value={condition.matchValue} onChange={v => onChange({ ...condition, matchValue: v })} />
+            {/* Primary — column selector + multi-value picker */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ColInput value={condition.matchColumn} onChange={v => onChange({ ...condition, matchColumn: v, matchValue: [] })} placeholder="column" />
+                <span className="text-xs text-muted-foreground shrink-0">IN</span>
+              </div>
+              <ValMultiSelect
+                col={condition.matchColumn}
+                values={toMatchArray(condition.matchValue)}
+                onChange={v => onChange({ ...condition, matchValue: v })}
+              />
             </div>
             {/* Secondary (optional AND) */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground shrink-0 w-6 text-right">AND</span>
-              <ColInput value={condition.matchColumn2 ?? ""} onChange={v => onChange({ ...condition, matchColumn2: v || undefined, matchValue2: undefined })} placeholder="(optional column)" />
-              <span className="text-xs text-muted-foreground shrink-0">=</span>
-              <ValInput col={condition.matchColumn2 ?? ""} value={condition.matchValue2 ?? ""} onChange={v => onChange({ ...condition, matchValue2: v || undefined })} disabled={!condition.matchColumn2} />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground shrink-0">AND</span>
+                <ColInput value={condition.matchColumn2 ?? ""} onChange={v => onChange({ ...condition, matchColumn2: v || undefined, matchValue2: [] })} placeholder="(optional column)" />
+                <span className="text-xs text-muted-foreground shrink-0">IN</span>
+              </div>
+              <ValMultiSelect
+                col={condition.matchColumn2 ?? ""}
+                values={toMatchArray(condition.matchValue2 ?? [])}
+                onChange={v => onChange({ ...condition, matchValue2: v.length ? v : undefined })}
+                disabled={!condition.matchColumn2}
+              />
             </div>
           </div>
 

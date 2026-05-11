@@ -30,11 +30,14 @@ export interface FlowCondition {
   name: string;
   /** Column from the group SQL result to match against, e.g. "order_type" */
   matchColumn: string;
-  /** Expected value (case-insensitive), e.g. "New Activation" */
-  matchValue: string;
+  /**
+   * One or more values that trigger this condition (case-insensitive OR match).
+   * Supports both `string` (legacy single value) and `string[]` (multi-value).
+   */
+  matchValue: string | string[];
   /** Optional second column for AND logic, e.g. "vlocity_cmt__Reason__c" */
   matchColumn2?: string;
-  matchValue2?: string;
+  matchValue2?: string | string[];
   /** Flow nodes shown when this condition matches */
   flowNodes: FlowNode[];
 }
@@ -98,10 +101,23 @@ export function newFlowCondition(partial?: Partial<FlowCondition>): FlowConditio
     id: crypto.randomUUID(),
     name: "New Condition",
     matchColumn: "order_type",
-    matchValue: "",
+    matchValue: [],
     flowNodes: [],
     ...partial,
   };
+}
+
+/** Normalise a matchValue (legacy string or new string[]) to an array. */
+export function toMatchArray(v: string | string[]): string[] {
+  if (Array.isArray(v)) return v;
+  return v ? [v] : [];
+}
+
+/** Returns true when the row value matches the condition value (OR logic, case-insensitive). */
+function matchesValue(rowVal: string, condVal: string | string[]): boolean {
+  const nv = rowVal.trim().toLowerCase();
+  const arr = toMatchArray(condVal);
+  return arr.length > 0 && arr.some(v => v.trim().toLowerCase() === nv);
 }
 
 /**
@@ -116,12 +132,11 @@ export function resolveActiveNodes(
 ): { nodes: FlowNode[]; conditionName: string | null } {
   if (config.flowConditions && config.flowConditions.length > 0) {
     for (const cond of config.flowConditions) {
-      const v1 = (row[cond.matchColumn] ?? "").trim().toLowerCase();
-      const m1 = cond.matchValue.trim().toLowerCase();
-      if (!m1 || v1 !== m1) continue;
+      const v1 = (row[cond.matchColumn] ?? "").trim();
+      if (!matchesValue(v1, cond.matchValue)) continue;
       if (cond.matchColumn2 && cond.matchValue2) {
-        const v2 = (row[cond.matchColumn2] ?? "").trim().toLowerCase();
-        if (v2 !== cond.matchValue2.trim().toLowerCase()) continue;
+        const v2 = (row[cond.matchColumn2] ?? "").trim();
+        if (!matchesValue(v2, cond.matchValue2)) continue;
       }
       return { nodes: cond.flowNodes, conditionName: cond.name };
     }
