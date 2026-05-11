@@ -1,5 +1,5 @@
 import { useClerk, useUser } from "@clerk/react";
-import { Bell, ShieldAlert, LogOut } from "lucide-react";
+import { Bell, LogOut } from "lucide-react";
 import { useGetSystemHealth } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,11 +42,6 @@ export default function Header() {
       <div className="flex items-center gap-4">
         <Button variant="outline" size="sm" className="hidden md:flex border-primary/30 hover:border-primary text-primary hover:bg-primary/10">
           Test Connection
-        </Button>
-
-        <Button variant="destructive" size="sm" className="hidden md:flex gap-2">
-          <ShieldAlert className="w-4 h-4" />
-          <span className="font-bold tracking-wide">E-STOP</span>
         </Button>
 
         <Button variant="ghost" size="icon" className="relative rounded-full text-muted-foreground hover:text-white">
