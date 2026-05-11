@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
-import { getAuth } from "@clerk/express";
+import { db, usersTable, tenantsTable } from "@workspace/db";
+import { getAuth, clerkClient } from "@clerk/express";
 import {
   CreateUserBody,
   UpdateUserBody,
@@ -31,8 +31,38 @@ router.get("/users/me", async (req, res): Promise<void> => {
   const auth = getAuth(req);
   const clerkId = auth?.userId;
   if (!clerkId) { res.status(401).json({ error: "Unauthorized" }); return; }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId));
-  if (!user) { res.status(404).json({ error: "User profile not found" }); return; }
+
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId));
+  if (existing) { res.json(GetCurrentUserResponse.parse(existing)); return; }
+
+  // Auto-provision: fetch details from Clerk then create tenant + user
+  const clerk = await clerkClient();
+  const clerkUser = await clerk.users.getUser(clerkId);
+  const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.local`;
+  const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null;
+  const avatarUrl = clerkUser.imageUrl ?? null;
+
+  // Derive a unique tenant slug from the email domain or clerkId
+  const domain = email.split("@")[1]?.replace(/\./g, "-") ?? clerkId.slice(0, 12);
+  const baseSlug = domain.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const slug = `${baseSlug}-${Date.now().toString(36)}`;
+
+  const [tenant] = await db.insert(tenantsTable).values({
+    name: name ?? email,
+    slug,
+    plan: "starter",
+  }).returning();
+
+  const [user] = await db.insert(usersTable).values({
+    clerkId,
+    email,
+    name,
+    avatarUrl,
+    role: "admin",
+    tenantId: tenant.id,
+  }).returning();
+
+  req.log.info({ userId: user.id, tenantId: tenant.id }, "Auto-provisioned user and tenant");
   res.json(GetCurrentUserResponse.parse(user));
 });
 
