@@ -421,59 +421,71 @@ function JourneyFlowCanvas({
             </div>
           ) : (
             /* ── World div: everything inside transforms together ── */
-            <div
-              style={{
-                position: "absolute", top: 0, left: 0,
-                transformOrigin: "0 0",
-                transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
-              }}
-            >
-              {/* SVG edges — zero-size with overflow:visible so paths draw anywhere */}
-              <svg
-                style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, overflow: "visible", pointerEvents: "none" }}
-              >
-                <defs>
-                  <filter id="fc-glow-g"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                  <filter id="fc-glow-r"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-                </defs>
-                {flowNodes.filter(n => n.parentNodeId).map(node => {
-                  const parent = flowNodes.find(p => p.id === node.parentNodeId);
-                  if (!parent) return null;
-                  const pp = nodePositions[parent.id];
-                  const cp = nodePositions[node.id];
-                  if (!pp || !cp) return null;
-                  const sx = pp.x + NODE_RADIUS, sy = pp.y + NODE_RADIUS;
-                  const ex = cp.x + NODE_RADIUS, ey = cp.y + NODE_RADIUS;
-                  const mx = (sx + ex) / 2;
-                  const childResult = nodeResults[node.id];
-                  const color = childResult?.status === "pass" ? "#10b981" : childResult?.status === "fail" ? "#ef4444" : childResult?.status === "error" ? "#f59e0b" : "#334155";
-                  const animated = childResult?.status === "pass" || childResult?.status === "fail";
-                  const d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
-                  return (
-                    <g key={`e-${node.id}`}>
-                      <path d={d} fill="none" stroke={color} strokeWidth="5" strokeOpacity="0.12" />
-                      <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeOpacity={animated ? 0.9 : 0.3}
-                        filter={animated ? (childResult?.status === "pass" ? "url(#fc-glow-g)" : "url(#fc-glow-r)") : undefined} />
-                    </g>
-                  );
-                })}
-              </svg>
+            (() => {
+              // Compute SVG bounds so paths always have a real viewport to render into
+              const positions = Object.values(nodePositions);
+              const svgW = positions.reduce((m, p) => Math.max(m, p.x + NODE_SIZE + 400), 1200);
+              const svgH = positions.reduce((m, p) => Math.max(m, p.y + NODE_SIZE + 300), 800);
 
-              {/* Draggable nodes */}
-              {flowNodes.map(node => {
-                const pos = nodePositions[node.id];
-                if (!pos) return null;
-                return (
-                  <div
-                    key={node.id}
-                    style={{ position: "absolute", left: pos.x, top: pos.y, cursor: "grab" }}
-                    onMouseDown={e => onNodeDown(e, node.id)}
+              return (
+                <div
+                  style={{
+                    position: "absolute", top: 0, left: 0,
+                    transformOrigin: "0 0",
+                    transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
+                    width: svgW,
+                    height: svgH,
+                  }}
+                >
+                  {/* SVG edges — sized to cover all node positions */}
+                  <svg
+                    style={{ position: "absolute", top: 0, left: 0, width: svgW, height: svgH, pointerEvents: "none" }}
                   >
-                    <CanvasNode node={node} result={nodeResults[node.id]} selected={selectedNodeId === node.id} />
-                  </div>
-                );
-              })}
-            </div>
+                    <defs>
+                      <filter id="fc-glow-g"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                      <filter id="fc-glow-r"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                    </defs>
+                    {flowNodes.filter(n => n.parentNodeId).map(node => {
+                      const parent = flowNodes.find(p => p.id === node.parentNodeId);
+                      if (!parent) return null;
+                      const pp = nodePositions[parent.id];
+                      const cp = nodePositions[node.id];
+                      if (!pp || !cp) return null;
+                      // Edge from right-center of parent circle to left-center of child circle
+                      const sx = pp.x + NODE_RADIUS, sy = pp.y + NODE_RADIUS;
+                      const ex = cp.x + NODE_RADIUS, ey = cp.y + NODE_RADIUS;
+                      const mx = (sx + ex) / 2;
+                      const childResult = nodeResults[node.id];
+                      const color = childResult?.status === "pass" ? "#10b981" : childResult?.status === "fail" ? "#ef4444" : childResult?.status === "error" ? "#f59e0b" : "#334155";
+                      const animated = childResult?.status === "pass" || childResult?.status === "fail";
+                      const d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
+                      return (
+                        <g key={`e-${node.id}`}>
+                          <path d={d} fill="none" stroke={color} strokeWidth="6" strokeOpacity="0.12" />
+                          <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeOpacity={animated ? 0.9 : 0.35}
+                            filter={animated ? (childResult?.status === "pass" ? "url(#fc-glow-g)" : "url(#fc-glow-r)") : undefined} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Draggable nodes */}
+                  {flowNodes.map(node => {
+                    const pos = nodePositions[node.id];
+                    if (!pos) return null;
+                    return (
+                      <div
+                        key={node.id}
+                        style={{ position: "absolute", left: pos.x, top: pos.y, cursor: "grab" }}
+                        onMouseDown={e => onNodeDown(e, node.id)}
+                      >
+                        <CanvasNode node={node} result={nodeResults[node.id]} selected={selectedNodeId === node.id} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
           )}
         </div>
 
