@@ -36,8 +36,7 @@ router.get("/users/me", async (req, res): Promise<void> => {
   if (existing) { res.json(GetCurrentUserResponse.parse(existing)); return; }
 
   // Auto-provision: fetch details from Clerk then create tenant + user
-  const clerk = await clerkClient();
-  const clerkUser = await clerk.users.getUser(clerkId);
+  const clerkUser = await clerkClient.users.getUser(clerkId);
   const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.local`;
   const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null;
   const avatarUrl = clerkUser.imageUrl ?? null;

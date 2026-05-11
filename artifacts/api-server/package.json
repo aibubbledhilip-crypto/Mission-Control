@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-athena": "^3.1045.0",
     "@clerk/express": "^2.1.15",
     "@clerk/shared": "^4.10.2",
     "@workspace/api-zod": "workspace:*",
