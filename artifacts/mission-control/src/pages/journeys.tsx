@@ -31,7 +31,6 @@ import { format } from "date-fns";
 import {
   loadJourneyConfigs,
   layoutFlowNodes,
-  canvasDimensions,
   type JourneyConfig,
   type FlowNode,
   NODE_SIZE,
@@ -69,17 +68,11 @@ function substituteVars(sql: string, row: Record<string, string>, accountCol: st
 function CanvasNode({
   node,
   result,
-  x,
-  y,
   selected,
-  onClick,
 }: {
   node: FlowNode;
   result?: NodeResult;
-  x: number;
-  y: number;
   selected: boolean;
-  onClick: () => void;
 }) {
   const Icon = ICON_MAP[node.icon] ?? Database;
   const status = result?.status ?? "idle";
@@ -93,7 +86,7 @@ function CanvasNode({
 
   const glowSize =
     status === "pass" || status === "fail" ? "0 0 28px 4px" :
-    status === "loading" ? "0 0 16px 2px" : "0 0 0px 0px";
+    status === "loading"                   ? "0 0 16px 2px" : "0 0 0 0";
 
   const iconColor =
     status === "pass"    ? "#10b981" :
@@ -103,28 +96,24 @@ function CanvasNode({
                            "#64748b";
 
   return (
-    <div
-      className="absolute"
-      style={{ left: x, top: y, width: NODE_SIZE + 40, transform: "translateX(-20px)" }}
-    >
-      <button
-        onClick={onClick}
-        className="relative mx-auto flex items-center justify-center transition-all duration-300 hover:scale-110 focus:outline-none"
+    <div style={{ width: NODE_SIZE + 40, marginLeft: -20, userSelect: "none" }}>
+      <div
+        className="mx-auto flex items-center justify-center"
         style={{
           width: NODE_SIZE,
           height: NODE_SIZE,
           borderRadius: "50%",
           border: `3px solid ${ringColor}`,
-          boxShadow: `${glowSize} ${ringColor}${selected ? ", 0 0 0 4px rgba(255,255,255,0.2)" : ""}`,
+          boxShadow: `${glowSize} ${ringColor}${selected ? ", 0 0 0 5px rgba(255,255,255,0.18)" : ""}`,
           background: "radial-gradient(circle at 35% 35%, #1a2744, #0a0f18)",
+          transition: "box-shadow 0.3s, border-color 0.3s",
           animation: status === "loading" ? "pulse 1.5s infinite" : undefined,
         }}
       >
-        <span style={{ color: iconColor }} className="inline-flex">
+        <span style={{ color: iconColor }} className="inline-flex pointer-events-none">
           <Icon className="w-9 h-9" />
         </span>
-      </button>
-      {/* Label */}
+      </div>
       <div className="text-center mt-2 px-1">
         <div
           className="text-[11px] font-bold tracking-wider uppercase truncate"
@@ -133,13 +122,8 @@ function CanvasNode({
           {node.name}
         </div>
         {status !== "idle" && (
-          <div
-            className="text-[10px] font-semibold mt-0.5"
-            style={{ color: ringColor }}
-          >
-            {status === "loading" ? "···" :
-             status === "pass"    ? "PASS" :
-             status === "fail"    ? "FAIL" : "ERR"}
+          <div className="text-[10px] font-semibold mt-0.5" style={{ color: ringColor }}>
+            {status === "loading" ? "···" : status === "pass" ? "PASS" : status === "fail" ? "FAIL" : "ERR"}
           </div>
         )}
         {(status === "pass" || status === "fail") && result?.rowCount !== undefined && (
@@ -163,97 +147,195 @@ function JourneyFlowCanvas({
   selectedRow: Record<string, string>;
   onClose: () => void;
 }) {
-  const [zoom, setZoom] = useState(100);
+  // ── Transform state (also mirrored in refs for zero-stale-closure window handlers) ──
+  const [zoom, setZoom] = useState(1.0);
+  const [pan, setPan] = useState({ x: 80, y: 60 });
+  const zoomRef = useRef(1.0);
+  const panRef = useRef({ x: 80, y: 60 });
+  function applyZoom(z: number) { zoomRef.current = z; setZoom(z); }
+  function applyPan(p: { x: number; y: number }) { panRef.current = p; setPan(p); }
+
+  // ── Node positions: start from auto-layout, then user can drag ──
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const nodePosRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  // ── Interaction refs (no state — avoid renders during drag/pan) ──
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragNodeIdRef   = useRef<string | null>(null);
+  const dragOffsetRef   = useRef({ x: 0, y: 0 });
+  const dragStartRef    = useRef({ x: 0, y: 0 });
+  const isDraggingRef   = useRef(false);
+  const isPanningRef    = useRef(false);
+  const panStartRef     = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+
+  // ── Feature state ──
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({});
   const runRef = useRef(0);
 
-  const flowNodes = config.flowNodes ?? [];
-  const positions = layoutFlowNodes(flowNodes);
-  const dims = canvasDimensions(positions);
+  const flowNodes  = config.flowNodes ?? [];
   const accountCol = config.accountColumn ?? "bancan";
-  const bancan = selectedRow[accountCol] ?? Object.values(selectedRow)[0] ?? "";
-
-  // Keep a stable ref to the current row so async callbacks always see the latest values
-  // without adding the whole row object to effect deps (avoids re-running on every localStorage poll)
+  const bancan     = selectedRow[accountCol] ?? Object.values(selectedRow)[0] ?? "";
   const selectedRowRef = useRef(selectedRow);
   selectedRowRef.current = selectedRow;
 
-  // Display header values
-  const idCol = (config.rawColumns ?? []).find(c => c.toLowerCase().includes("order")) ?? (config.rawColumns ?? [])[0] ?? "";
+  const idCol    = (config.rawColumns ?? []).find(c => c.toLowerCase().includes("order")) ?? (config.rawColumns ?? [])[0] ?? "";
   const displayId = idCol ? selectedRow[idCol] : bancan;
   const statusCol = (config.rawColumns ?? []).find(c => c.toLowerCase() === "status") ?? "";
   const statusVal = statusCol ? selectedRow[statusCol] : null;
 
-  // Run all node queries when the account ID or config changes (NOT on every object reference change)
+  // ── Init node positions from auto-layout when config changes ──
+  useEffect(() => {
+    const layout = layoutFlowNodes(flowNodes);
+    const init: Record<string, { x: number; y: number }> = {};
+    Object.entries(layout).forEach(([id, p]) => { init[id] = { x: p.x, y: p.y }; });
+    nodePosRef.current = init;
+    setNodePositions(init);
+    setSelectedNodeId(null);
+    applyZoom(1.0);
+    applyPan({ x: 80, y: 60 });
+  }, [config.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Run node SQL queries when account changes ──
   useEffect(() => {
     if (flowNodes.length === 0) return;
     const runId = ++runRef.current;
     const row = selectedRowRef.current;
-
-    // Initialize all nodes to loading
     const initial: Record<string, NodeResult> = {};
-    flowNodes.forEach(n => {
-      initial[n.id] = { status: n.sql?.trim() ? "loading" : "idle" };
-    });
+    flowNodes.forEach(n => { initial[n.id] = { status: n.sql?.trim() ? "loading" : "idle" }; });
     setNodeResults(initial);
     setSelectedNodeId(null);
 
-    // Run each node's SQL in parallel
     flowNodes.forEach(async (node) => {
       if (!node.sql?.trim()) return;
       const dsId = node.dataSourceId ?? config.dataSourceId;
       if (!dsId) {
-        if (runRef.current === runId) {
-          setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: "No data source" } }));
-        }
+        if (runRef.current === runId) setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: "No data source" } }));
         return;
       }
-
       const sql = substituteVars(node.sql, row, accountCol);
-
       try {
         const resp = await fetch(`/api/data-sources/${dsId}/query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ sql }),
+          method: "POST", headers: { "Content-Type": "application/json" },
+          credentials: "include", body: JSON.stringify({ sql }),
         });
-
         if (runRef.current !== runId) return;
-
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({ error: resp.statusText }));
           setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err.error ?? "Query failed" } }));
           return;
         }
-
         const result = await resp.json();
         const rowCount: number = result.rowCount ?? 0;
-        const passed =
-          node.validation === "rowCount > 0" ? rowCount > 0 :
-          node.validation === "rowCount === 0" ? rowCount === 0 :
-          rowCount > 0;
-
-        setNodeResults(r => ({
-          ...r,
-          [node.id]: { status: passed ? "pass" : "fail", rowCount, rows: result.rows?.slice(0, 5) },
-        }));
+        const passed = node.validation === "rowCount > 0" ? rowCount > 0 : node.validation === "rowCount === 0" ? rowCount === 0 : rowCount > 0;
+        setNodeResults(r => ({ ...r, [node.id]: { status: passed ? "pass" : "fail", rowCount, rows: result.rows?.slice(0, 5) } }));
       } catch (err: any) {
         if (runRef.current !== runId) return;
         setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err?.message ?? "Network error" } }));
       }
     });
-  // Depend on the account ID string + config ID — stable across localStorage polls
   }, [bancan, config.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedNode = selectedNodeId ? flowNodes.find(n => n.id === selectedNodeId) : null;
+  // ── Window-level mouse handlers (attached once, use refs everywhere) ──
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (isPanningRef.current) {
+        const dx = e.clientX - panStartRef.current.mx;
+        const dy = e.clientY - panStartRef.current.my;
+        const p = { x: panStartRef.current.px + dx / zoomRef.current, y: panStartRef.current.py + dy / zoomRef.current };
+        panRef.current = p;
+        setPan(p);
+        if (containerRef.current) containerRef.current.style.cursor = "grabbing";
+      }
+      if (dragNodeIdRef.current) {
+        const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
+        if (dist > 4) isDraggingRef.current = true;
+        if (isDraggingRef.current) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const nx = (e.clientX - rect.left) / zoomRef.current - panRef.current.x - dragOffsetRef.current.x;
+          const ny = (e.clientY - rect.top)  / zoomRef.current - panRef.current.y - dragOffsetRef.current.y;
+          const next = { ...nodePosRef.current, [dragNodeIdRef.current]: { x: nx, y: ny } };
+          nodePosRef.current = next;
+          setNodePositions(next);
+          if (containerRef.current) containerRef.current.style.cursor = "grabbing";
+        }
+      }
+    };
+    const onUp = () => {
+      if (dragNodeIdRef.current && !isDraggingRef.current) {
+        // It was a tap/click — toggle selection
+        const id = dragNodeIdRef.current;
+        setSelectedNodeId(prev => prev === id ? null : id);
+      }
+      isPanningRef.current  = false;
+      dragNodeIdRef.current = null;
+      isDraggingRef.current = false;
+      if (containerRef.current) containerRef.current.style.cursor = "grab";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []); // zero deps — all mutable state accessed via refs
+
+  // ── Wheel zoom toward cursor ──
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor   = e.deltaY > 0 ? 0.92 : 1.09;
+      const newZoom  = Math.max(0.15, Math.min(4, zoomRef.current * factor));
+      const rect     = el.getBoundingClientRect();
+      const mx       = e.clientX - rect.left;
+      const my       = e.clientY - rect.top;
+      const newPan   = {
+        x: mx / newZoom - mx / zoomRef.current + panRef.current.x,
+        y: my / newZoom - my / zoomRef.current + panRef.current.y,
+      };
+      zoomRef.current = newZoom; panRef.current = newPan;
+      setZoom(newZoom); setPan(newPan);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []); // zero deps
+
+  // ── Canvas pointer-down: start pan or node drag ──
+  const onCanvasDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    isPanningRef.current = true;
+    panStartRef.current = { mx: e.clientX, my: e.clientY, px: panRef.current.x, py: panRef.current.y };
+  };
+  const onNodeDown = (e: React.MouseEvent<HTMLDivElement>, nodeId: string) => {
+    e.stopPropagation(); // don't start canvas pan
+    if (e.button !== 0) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const np = nodePosRef.current[nodeId] ?? { x: 0, y: 0 };
+    dragNodeIdRef.current = nodeId;
+    dragOffsetRef.current = {
+      x: (e.clientX - rect.left) / zoomRef.current - panRef.current.x - np.x,
+      y: (e.clientY - rect.top)  / zoomRef.current - panRef.current.y - np.y,
+    };
+    dragStartRef.current  = { x: e.clientX, y: e.clientY };
+    isDraggingRef.current = false;
+  };
+
+  const zoomIn    = () => { const z = Math.min(4, zoomRef.current * 1.25); applyZoom(z); };
+  const zoomOut   = () => { const z = Math.max(0.15, zoomRef.current / 1.25); applyZoom(z); };
+  const resetView = () => {
+    const layout = layoutFlowNodes(flowNodes);
+    const init: Record<string, { x: number; y: number }> = {};
+    Object.entries(layout).forEach(([id, p]) => { init[id] = { x: p.x, y: p.y }; });
+    nodePosRef.current = init; setNodePositions(init);
+    applyZoom(1.0); applyPan({ x: 80, y: 60 });
+  };
+
+  const selectedNode   = selectedNodeId ? flowNodes.find(n => n.id === selectedNodeId) : null;
   const selectedResult = selectedNodeId ? nodeResults[selectedNodeId] : null;
-
-  const passCount = Object.values(nodeResults).filter(r => r.status === "pass").length;
-  const failCount = Object.values(nodeResults).filter(r => r.status === "fail").length;
+  const passCount    = Object.values(nodeResults).filter(r => r.status === "pass").length;
+  const failCount    = Object.values(nodeResults).filter(r => r.status === "fail").length;
   const loadingCount = Object.values(nodeResults).filter(r => r.status === "loading").length;
-
   const hasNodes = flowNodes.length > 0;
 
   return (
@@ -293,23 +375,21 @@ function JourneyFlowCanvas({
                 </span>
               ) : (
                 <>
-                  <span className="flex items-center gap-1 text-emerald-400">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> {passCount}
-                  </span>
-                  <span className="flex items-center gap-1 text-red-400">
-                    <XCircle className="w-3.5 h-3.5" /> {failCount}
-                  </span>
+                  <span className="flex items-center gap-1 text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" /> {passCount}</span>
+                  <span className="flex items-center gap-1 text-red-400"><XCircle className="w-3.5 h-3.5" /> {failCount}</span>
                 </>
               )}
             </div>
           )}
-          {/* Zoom */}
-          <div className="flex items-center gap-1 bg-card border border-border rounded-md overflow-hidden">
-            <button onClick={() => setZoom(z => Math.max(40, z - 10))} className="px-2 py-1 hover:bg-white/10 text-muted-foreground hover:text-white transition-colors">
+          {/* Zoom controls */}
+          <div className="flex items-center bg-card border border-border rounded-md overflow-hidden">
+            <button onClick={zoomOut} className="px-2 py-1 hover:bg-white/10 text-muted-foreground hover:text-white transition-colors" title="Zoom out (or scroll)">
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="px-2 text-[11px] font-medium text-white min-w-[36px] text-center">{zoom}%</span>
-            <button onClick={() => setZoom(z => Math.min(200, z + 10))} className="px-2 py-1 hover:bg-white/10 text-muted-foreground hover:text-white transition-colors">
+            <button onClick={resetView} className="px-2 text-[11px] font-medium text-white min-w-[44px] text-center hover:bg-white/10 transition-colors" title="Reset view">
+              {Math.round(zoom * 100)}%
+            </button>
+            <button onClick={zoomIn} className="px-2 py-1 hover:bg-white/10 text-muted-foreground hover:text-white transition-colors" title="Zoom in (or scroll)">
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -318,10 +398,19 @@ function JourneyFlowCanvas({
 
       {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Canvas area */}
-        <div className="flex-1 overflow-auto bg-black relative">
+        {/* ── Canvas ── */}
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-hidden bg-black relative select-none"
+          style={{
+            cursor: "grab",
+            backgroundImage: "radial-gradient(circle at 1.5px 1.5px, rgba(255,255,255,0.055) 1.5px, transparent 0)",
+            backgroundSize: "28px 28px",
+          }}
+          onMouseDown={onCanvasDown}
+        >
           {!hasNodes ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground pointer-events-none">
               <GitBranch className="w-12 h-12 opacity-20" />
               <div className="text-center">
                 <p className="text-sm font-medium">No flow nodes configured</p>
@@ -331,102 +420,57 @@ function JourneyFlowCanvas({
               </div>
             </div>
           ) : (
+            /* ── World div: everything inside transforms together ── */
             <div
               style={{
-                transform: `scale(${zoom / 100})`,
-                transformOrigin: "top left",
-                width: dims.width,
-                height: dims.height,
-                minWidth: "100%",
-                minHeight: "100%",
+                position: "absolute", top: 0, left: 0,
+                transformOrigin: "0 0",
+                transform: `scale(${zoom}) translate(${pan.x}px, ${pan.y}px)`,
               }}
             >
-              {/* Grid background */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundImage: "radial-gradient(circle at 2px 2px, rgba(255,255,255,0.06) 1.5px, transparent 0)",
-                  backgroundSize: "28px 28px",
-                }}
-              />
-
-              {/* SVG Edges */}
+              {/* SVG edges — zero-size with overflow:visible so paths draw anywhere */}
               <svg
-                className="absolute inset-0 pointer-events-none overflow-visible"
-                style={{ width: dims.width, height: dims.height }}
+                style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0, overflow: "visible", pointerEvents: "none" }}
               >
                 <defs>
-                  <filter id="glow-green">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                  </filter>
-                  <filter id="glow-red">
-                    <feGaussianBlur stdDeviation="3" result="blur" />
-                    <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                  </filter>
+                  <filter id="fc-glow-g"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                  <filter id="fc-glow-r"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
                 </defs>
-
                 {flowNodes.filter(n => n.parentNodeId).map(node => {
                   const parent = flowNodes.find(p => p.id === node.parentNodeId);
                   if (!parent) return null;
-
-                  const pp = positions[parent.id];
-                  const cp = positions[node.id];
+                  const pp = nodePositions[parent.id];
+                  const cp = nodePositions[node.id];
                   if (!pp || !cp) return null;
-
-                  const sx = pp.x + NODE_RADIUS;
-                  const sy = pp.y + NODE_RADIUS;
-                  const ex = cp.x + NODE_RADIUS;
-                  const ey = cp.y + NODE_RADIUS;
+                  const sx = pp.x + NODE_RADIUS, sy = pp.y + NODE_RADIUS;
+                  const ex = cp.x + NODE_RADIUS, ey = cp.y + NODE_RADIUS;
                   const mx = (sx + ex) / 2;
-
                   const childResult = nodeResults[node.id];
-                  const edgeColor =
-                    childResult?.status === "pass"  ? "#10b981" :
-                    childResult?.status === "fail"  ? "#ef4444" :
-                    childResult?.status === "error" ? "#f59e0b" :
-                                                     "#334155";
-
-                  const isAnimated = childResult?.status === "pass" || childResult?.status === "fail";
-
+                  const color = childResult?.status === "pass" ? "#10b981" : childResult?.status === "fail" ? "#ef4444" : childResult?.status === "error" ? "#f59e0b" : "#334155";
+                  const animated = childResult?.status === "pass" || childResult?.status === "fail";
+                  const d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
                   return (
-                    <g key={`edge-${node.id}`}>
-                      {/* Shadow/glow track */}
-                      <path
-                        d={`M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`}
-                        fill="none"
-                        stroke={edgeColor}
-                        strokeWidth="4"
-                        strokeOpacity="0.15"
-                      />
-                      {/* Main edge */}
-                      <path
-                        d={`M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`}
-                        fill="none"
-                        stroke={edgeColor}
-                        strokeWidth="2.5"
-                        strokeOpacity={isAnimated ? 0.9 : 0.35}
-                        filter={isAnimated ? (childResult?.status === "pass" ? "url(#glow-green)" : "url(#glow-red)") : undefined}
-                      />
+                    <g key={`e-${node.id}`}>
+                      <path d={d} fill="none" stroke={color} strokeWidth="5" strokeOpacity="0.12" />
+                      <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeOpacity={animated ? 0.9 : 0.3}
+                        filter={animated ? (childResult?.status === "pass" ? "url(#fc-glow-g)" : "url(#fc-glow-r)") : undefined} />
                     </g>
                   );
                 })}
               </svg>
 
-              {/* Nodes */}
+              {/* Draggable nodes */}
               {flowNodes.map(node => {
-                const pos = positions[node.id];
+                const pos = nodePositions[node.id];
                 if (!pos) return null;
                 return (
-                  <CanvasNode
+                  <div
                     key={node.id}
-                    node={node}
-                    result={nodeResults[node.id]}
-                    x={pos.x}
-                    y={pos.y}
-                    selected={selectedNodeId === node.id}
-                    onClick={() => setSelectedNodeId(id => id === node.id ? null : node.id)}
-                  />
+                    style={{ position: "absolute", left: pos.x, top: pos.y, cursor: "grab" }}
+                    onMouseDown={e => onNodeDown(e, node.id)}
+                  >
+                    <CanvasNode node={node} result={nodeResults[node.id]} selected={selectedNodeId === node.id} />
+                  </div>
                 );
               })}
             </div>
