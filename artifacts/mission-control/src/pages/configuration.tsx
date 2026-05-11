@@ -22,12 +22,14 @@ import { cn } from "@/lib/utils";
 import {
   type JourneyConfig,
   type FlowNode,
+  type FlowCondition,
   type NodeIcon,
   COLORS,
   loadJourneyConfigs,
   saveJourneyConfigs,
   newConfig,
   newFlowNode,
+  newFlowCondition,
 } from "@/lib/journey-configs";
 
 export type { JourneyConfig } from "@/lib/journey-configs";
@@ -244,6 +246,154 @@ function NodeEditorRow({
   );
 }
 
+// ─── Flow Condition Card ───────────────────────────────────────────────────────
+
+function FlowConditionCard({
+  condition,
+  onChange,
+  onDelete,
+  dataSources,
+  defaultDataSourceId,
+  availableColumns,
+}: {
+  condition: FlowCondition;
+  onChange: (updated: FlowCondition) => void;
+  onDelete: () => void;
+  dataSources: any[];
+  defaultDataSourceId?: number;
+  availableColumns: string[];
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const nodes = condition.flowNodes;
+
+  function addNode() {
+    onChange({ ...condition, flowNodes: [...nodes, newFlowNode({ dataSourceId: defaultDataSourceId })] });
+  }
+  function updateNode(id: string, updated: FlowNode) {
+    onChange({ ...condition, flowNodes: nodes.map(n => n.id === id ? updated : n) });
+  }
+  function deleteNode(id: string) {
+    onChange({ ...condition, flowNodes: nodes.filter(n => n.id !== id) });
+  }
+
+  const ColInput = ({ value, onChange: onChg, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) =>
+    availableColumns.length > 0 ? (
+      <Select value={value || "__none__"} onValueChange={v => onChg(v === "__none__" ? "" : v)}>
+        <SelectTrigger className="flex-1 h-7 bg-black/50 border-border text-xs text-white">
+          <SelectValue placeholder={placeholder ?? "column"} />
+        </SelectTrigger>
+        <SelectContent className="bg-card border-border">
+          {placeholder && <SelectItem value="__none__" className="text-xs text-muted-foreground">— none —</SelectItem>}
+          {availableColumns.map(col => (
+            <SelectItem key={col} value={col} className="text-xs font-mono">{col}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    ) : (
+      <Input
+        value={value}
+        onChange={e => onChg(e.target.value)}
+        className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
+        placeholder={placeholder ?? "column"}
+      />
+    );
+
+  const summary = condition.matchColumn && condition.matchValue
+    ? `${condition.matchColumn} = "${condition.matchValue}"${condition.matchColumn2 && condition.matchValue2 ? ` AND ${condition.matchColumn2} = "${condition.matchValue2}"` : ""}`
+    : "No condition set";
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-black/20 overflow-hidden">
+      {/* Header */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 select-none"
+        onClick={() => setExpanded(e => !e)}
+      >
+        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+        <div className="flex-1 min-w-0">
+          <Input
+            value={condition.name}
+            onChange={e => { e.stopPropagation(); onChange({ ...condition, name: e.target.value }); }}
+            onClick={e => e.stopPropagation()}
+            className="bg-transparent border-0 p-0 h-auto text-sm font-semibold text-white focus-visible:ring-0 focus-visible:ring-offset-0 w-full"
+          />
+          <div className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate">
+            {summary} · {nodes.length} node{nodes.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          className="text-muted-foreground hover:text-red-400 transition-colors shrink-0"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-4 border-t border-border/30 pt-4">
+          {/* Match condition */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Match when (all must be true)</Label>
+            {/* Primary */}
+            <div className="flex items-center gap-2">
+              <ColInput value={condition.matchColumn} onChange={v => onChange({ ...condition, matchColumn: v })} placeholder="column" />
+              <span className="text-xs text-muted-foreground shrink-0">=</span>
+              <Input
+                value={condition.matchValue}
+                onChange={e => onChange({ ...condition, matchValue: e.target.value })}
+                className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
+                placeholder="value (case-insensitive)"
+              />
+            </div>
+            {/* Secondary (optional AND) */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground shrink-0 w-6 text-right">AND</span>
+              <ColInput value={condition.matchColumn2 ?? ""} onChange={v => onChange({ ...condition, matchColumn2: v || undefined, matchValue2: v ? condition.matchValue2 : undefined })} placeholder="(optional column)" />
+              <span className="text-xs text-muted-foreground shrink-0">=</span>
+              <Input
+                value={condition.matchValue2 ?? ""}
+                onChange={e => onChange({ ...condition, matchValue2: e.target.value || undefined })}
+                className="flex-1 h-7 bg-black/50 border-border text-xs text-white font-mono"
+                placeholder="(optional value)"
+                disabled={!condition.matchColumn2}
+              />
+            </div>
+          </div>
+
+          {/* Flow nodes */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Flow Nodes</Label>
+              <Button size="sm" variant="outline" className="h-6 text-xs border-border hover:bg-white/5 px-2" onClick={addNode}>
+                <Plus className="w-3 h-3 mr-1" /> Add Node
+              </Button>
+            </div>
+            {nodes.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground bg-black/20 rounded p-2.5 border border-dashed border-border/30">
+                No nodes yet — add nodes to define the validation graph for this condition.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {nodes.map(node => (
+                  <NodeEditorRow
+                    key={node.id}
+                    node={node}
+                    allNodes={nodes}
+                    onChange={updated => updateNode(node.id, updated)}
+                    onDelete={() => deleteNode(node.id)}
+                    dataSources={dataSources}
+                    defaultDataSourceId={defaultDataSourceId}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Config Card ──────────────────────────────────────────────────────────────
 
 function ConfigCard({
@@ -263,7 +413,7 @@ function ConfigCard({
   const [previewCols, setPreviewCols] = useState<string[]>([]);
 
   const queryMutation = useQueryDataSource();
-  const flowNodes = config.flowNodes ?? [];
+  const flowConditions = config.flowConditions ?? [];
 
   function addAccountId() {
     const val = newAccountId.trim();
@@ -307,21 +457,6 @@ function ConfigCard({
     );
   }
 
-  function addNode() {
-    const updated: FlowNode = newFlowNode({
-      name: `Node ${flowNodes.length + 1}`,
-      dataSourceId: config.dataSourceId,
-    });
-    onChange({ ...config, flowNodes: [...flowNodes, updated] });
-  }
-
-  function updateNode(id: string, updated: FlowNode) {
-    onChange({ ...config, flowNodes: flowNodes.map(n => n.id === id ? updated : n) });
-  }
-
-  function deleteNode(id: string) {
-    onChange({ ...config, flowNodes: flowNodes.filter(n => n.id !== id) });
-  }
 
   return (
     <Card className="bg-card/50 border-border/50">
@@ -335,9 +470,9 @@ function ConfigCard({
         <Badge variant="outline" className="text-[10px] border-border/50 text-muted-foreground shrink-0">
           {config.type === "sql" ? "SQL" : "Manual"} · {config.accountIds.length} accounts
         </Badge>
-        {flowNodes.length > 0 && (
+        {flowConditions.length > 0 && (
           <Badge variant="outline" className="text-[10px] border-primary/30 text-primary shrink-0">
-            <GitBranch className="w-2.5 h-2.5 mr-1" />{flowNodes.length} nodes
+            <GitBranch className="w-2.5 h-2.5 mr-1" />{flowConditions.length} condition{flowConditions.length !== 1 ? "s" : ""}
           </Badge>
         )}
         <button
@@ -555,41 +690,50 @@ function ConfigCard({
             </div>
           )}
 
-          {/* ── Flow Nodes ── */}
+          {/* ── Flow Conditions ── */}
           <div className="border-t border-border/30 pt-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-                <Label className="text-xs font-semibold">Flow Nodes</Label>
-                {flowNodes.length > 0 && (
-                  <Badge variant="outline" className="text-[9px] border-border/50">{flowNodes.length}</Badge>
+                <Label className="text-xs font-semibold">Flow Conditions</Label>
+                {flowConditions.length > 0 && (
+                  <Badge variant="outline" className="text-[9px] border-border/50">{flowConditions.length}</Badge>
                 )}
               </div>
-              <Button size="sm" variant="outline" className="h-7 text-xs border-border hover:bg-white/5" onClick={addNode}>
-                <Plus className="w-3 h-3 mr-1" /> Add Node
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-border hover:bg-white/5"
+                onClick={() => onChange({ ...config, flowConditions: [...flowConditions, newFlowCondition()] })}
+              >
+                <Plus className="w-3 h-3 mr-1" /> Add Condition
               </Button>
             </div>
 
-            {flowNodes.length === 0 ? (
+            {flowConditions.length === 0 ? (
               <div className="flex items-start gap-2 text-xs text-muted-foreground bg-black/20 rounded-md p-3 border border-dashed border-border/30">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
-                  Add nodes to display a flow graph in the Journeys view. Each node can run a SQL check per account — shown green (pass) or red (fail).
+                  Add conditions to show a different node graph per <code className="text-primary font-mono">order_type</code> or any SQL column.
+                  The first matching condition wins — each can have its own set of validation nodes.
                 </span>
               </div>
             ) : (
-              <div className="space-y-2">
-                {flowNodes.map(node => (
-                  <NodeEditorRow
-                    key={node.id}
-                    node={node}
-                    allNodes={flowNodes}
-                    onChange={updated => updateNode(node.id, updated)}
-                    onDelete={() => deleteNode(node.id)}
+              <div className="space-y-3">
+                {flowConditions.map(cond => (
+                  <FlowConditionCard
+                    key={cond.id}
+                    condition={cond}
+                    onChange={updated => onChange({ ...config, flowConditions: flowConditions.map(c => c.id === cond.id ? updated : c) })}
+                    onDelete={() => onChange({ ...config, flowConditions: flowConditions.filter(c => c.id !== cond.id) })}
                     dataSources={dataSources}
                     defaultDataSourceId={config.dataSourceId}
+                    availableColumns={config.rawColumns ?? []}
                   />
                 ))}
+                <p className="text-[10px] text-muted-foreground">
+                  Conditions are evaluated top-to-bottom — first match wins. Use <code className="font-mono">order_type</code> and <code className="font-mono">vlocity_cmt__Reason__c</code> to route accounts to the right validation graph.
+                </p>
               </div>
             )}
           </div>

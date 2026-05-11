@@ -31,6 +31,7 @@ import { format } from "date-fns";
 import {
   loadJourneyConfigs,
   layoutFlowNodes,
+  resolveActiveNodes,
   type JourneyConfig,
   type FlowNode,
   NODE_SIZE,
@@ -173,18 +174,22 @@ function JourneyFlowCanvas({
   const [nodeResults, setNodeResults] = useState<Record<string, NodeResult>>({});
   const runRef = useRef(0);
 
-  const flowNodes  = config.flowNodes ?? [];
   const accountCol = config.accountColumn ?? "bancan";
   const bancan     = selectedRow[accountCol] ?? Object.values(selectedRow)[0] ?? "";
   const selectedRowRef = useRef(selectedRow);
   selectedRowRef.current = selectedRow;
 
-  const idCol    = (config.rawColumns ?? []).find(c => c.toLowerCase().includes("order")) ?? (config.rawColumns ?? [])[0] ?? "";
+  // ── Resolve active flow nodes from the matched condition ──
+  const { nodes: flowNodes, conditionName } = resolveActiveNodes(config, selectedRow);
+  // Stable string key so effects only re-fire when condition actually changes
+  const conditionKey = conditionName ?? "__default__";
+
+  const idCol     = (config.rawColumns ?? []).find(c => c.toLowerCase().includes("order")) ?? (config.rawColumns ?? [])[0] ?? "";
   const displayId = idCol ? selectedRow[idCol] : bancan;
   const statusCol = (config.rawColumns ?? []).find(c => c.toLowerCase() === "status") ?? "";
   const statusVal = statusCol ? selectedRow[statusCol] : null;
 
-  // ── Init node positions from auto-layout when config changes ──
+  // ── Init node positions from auto-layout when config or matched condition changes ──
   useEffect(() => {
     const layout = layoutFlowNodes(flowNodes);
     const init: Record<string, { x: number; y: number }> = {};
@@ -194,9 +199,9 @@ function JourneyFlowCanvas({
     setSelectedNodeId(null);
     applyZoom(1.0);
     applyPan({ x: 80, y: 60 });
-  }, [config.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [config.id, conditionKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Run node SQL queries when account changes ──
+  // ── Run node SQL queries when account or matched condition changes ──
   useEffect(() => {
     if (flowNodes.length === 0) return;
     const runId = ++runRef.current;
@@ -234,7 +239,7 @@ function JourneyFlowCanvas({
         setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err?.message ?? "Network error" } }));
       }
     });
-  }, [bancan, config.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bancan, config.id, conditionKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Window-level mouse handlers (attached once, use refs everywhere) ──
   useEffect(() => {
@@ -352,6 +357,11 @@ function JourneyFlowCanvas({
               <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{config.name}</span>
               <span className="text-muted-foreground">·</span>
               <span className="font-mono text-sm font-bold text-white truncate max-w-[300px]">{displayId || bancan}</span>
+              {conditionName && (
+                <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-medium">
+                  {conditionName}
+                </Badge>
+              )}
               {statusVal && (
                 <Badge variant="outline" className={`text-[10px] ${
                   statusVal.toLowerCase() === "completed" || statusVal.toLowerCase() === "active"
@@ -413,9 +423,12 @@ function JourneyFlowCanvas({
             <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground pointer-events-none">
               <GitBranch className="w-12 h-12 opacity-20" />
               <div className="text-center">
-                <p className="text-sm font-medium">No flow nodes configured</p>
+                <p className="text-sm font-medium">No condition matched</p>
                 <p className="text-xs mt-1 text-muted-foreground/60">
-                  Go to <span className="text-primary">Configuration → Flow Nodes</span> to define the journey graph.
+                  This account's <code className="text-primary">order_type</code> did not match any configured condition.
+                </p>
+                <p className="text-xs mt-0.5 text-muted-foreground/60">
+                  Go to <span className="text-primary">Configuration → Flow Conditions</span> to add or adjust conditions.
                 </p>
               </div>
             </div>
@@ -1000,7 +1013,7 @@ export default function Journeys() {
 
   const selectedSqlConfig = selected?.kind === "sql" ? configs.find(c => c.id === selected.configId) : null;
   const selectedSqlRow = selectedSqlConfig && selected?.kind === "sql" ? selectedSqlConfig.rawRows?.[selected.rowIndex] : null;
-  const hasFlowNodes = (selectedSqlConfig?.flowNodes?.length ?? 0) > 0;
+  const hasFlowNodes = (selectedSqlConfig?.flowConditions?.length ?? 0) > 0 || (selectedSqlConfig?.flowNodes?.length ?? 0) > 0;
 
   return (
     <div className="-m-6 md:-m-8 flex h-[calc(100vh-4rem)] overflow-hidden">

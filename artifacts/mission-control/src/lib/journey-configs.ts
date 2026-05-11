@@ -18,6 +18,27 @@ export interface FlowNode {
   validation: NodeValidation;
 }
 
+/**
+ * A conditional flow variant. When a selected account's SQL row has
+ * `matchColumn === matchValue` (and optionally `matchColumn2 === matchValue2`),
+ * this set of flow nodes is shown on the canvas instead of any other variant.
+ * Matching is case-insensitive exact. The first matching condition wins.
+ */
+export interface FlowCondition {
+  id: string;
+  /** Label shown in the canvas header, e.g. "New Activation" */
+  name: string;
+  /** Column from the group SQL result to match against, e.g. "order_type" */
+  matchColumn: string;
+  /** Expected value (case-insensitive), e.g. "New Activation" */
+  matchValue: string;
+  /** Optional second column for AND logic, e.g. "vlocity_cmt__Reason__c" */
+  matchColumn2?: string;
+  matchValue2?: string;
+  /** Flow nodes shown when this condition matches */
+  flowNodes: FlowNode[];
+}
+
 export interface JourneyConfig {
   id: string;
   name: string;
@@ -33,7 +54,12 @@ export interface JourneyConfig {
   lastRunAt?: string;
   lastRunError?: string;
   rowCount?: number;
-  /** User-defined flow nodes that appear in the journey canvas */
+  /**
+   * Conditional flow variants — evaluated top-to-bottom, first match wins.
+   * Replaces the flat `flowNodes` field for new configs.
+   */
+  flowConditions?: FlowCondition[];
+  /** Legacy: flat list of flow nodes (used when no flowConditions defined) */
   flowNodes?: FlowNode[];
 }
 
@@ -65,6 +91,42 @@ export function newFlowNode(partial?: Partial<FlowNode>): FlowNode {
     validation: "rowCount > 0",
     ...partial,
   };
+}
+
+export function newFlowCondition(partial?: Partial<FlowCondition>): FlowCondition {
+  return {
+    id: crypto.randomUUID(),
+    name: "New Condition",
+    matchColumn: "order_type",
+    matchValue: "",
+    flowNodes: [],
+    ...partial,
+  };
+}
+
+/**
+ * Given a config and the currently selected SQL row, return which flow nodes
+ * to display and the name of the matched condition (if any).
+ * Conditions are evaluated top-to-bottom; first match wins.
+ * Falls back to config.flowNodes if no condition matches.
+ */
+export function resolveActiveNodes(
+  config: JourneyConfig,
+  row: Record<string, string>,
+): { nodes: FlowNode[]; conditionName: string | null } {
+  if (config.flowConditions && config.flowConditions.length > 0) {
+    for (const cond of config.flowConditions) {
+      const v1 = (row[cond.matchColumn] ?? "").trim().toLowerCase();
+      const m1 = cond.matchValue.trim().toLowerCase();
+      if (!m1 || v1 !== m1) continue;
+      if (cond.matchColumn2 && cond.matchValue2) {
+        const v2 = (row[cond.matchColumn2] ?? "").trim().toLowerCase();
+        if (v2 !== cond.matchValue2.trim().toLowerCase()) continue;
+      }
+      return { nodes: cond.flowNodes, conditionName: cond.name };
+    }
+  }
+  return { nodes: config.flowNodes ?? [], conditionName: null };
 }
 
 export function newConfig(idx: number): JourneyConfig {
