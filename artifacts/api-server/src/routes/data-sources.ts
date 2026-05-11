@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, dataSourcesTable } from "@workspace/db";
+import { AthenaClient, ListWorkGroupsCommand } from "@aws-sdk/client-athena";
 import {
   CreateDataSourceBody,
   UpdateDataSourceBody,
@@ -75,16 +76,35 @@ router.post("/data-sources/:id/test", async (req, res): Promise<void> => {
   if (!source) { res.status(404).json({ error: "Data source not found" }); return; }
 
   const start = Date.now();
-  // Simulate connection test — in production would attempt real connection
-  const latencyMs = Math.floor(Math.random() * 80) + 20;
-  // Cloud/serverless connectors (Athena, BigQuery, Snowflake) don't have a host
-  const cloudTypes = ["athena", "bigquery"];
-  const isCloud = cloudTypes.includes(source.type);
-  const hasCredentials = isCloud
-    ? !!(source.region || source.catalog || source.project)
-    : !!source.host;
-  const success = source.status !== "error" && hasCredentials;
-  const latencyActual = Date.now() - start + latencyMs;
+  let success = false;
+  let message = "Connection failed";
+
+  try {
+    if (source.type === "athena") {
+      const region = source.region ?? "us-east-1";
+      const athena = new AthenaClient({
+        region,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        },
+      });
+      await athena.send(new ListWorkGroupsCommand({}));
+      success = true;
+      message = `Athena connection verified (${region})`;
+    } else {
+      // Non-Athena: presence-based check (real drivers would be added per type)
+      const hasCredentials = !!(source.host || source.project || source.account);
+      success = hasCredentials;
+      message = success ? "Connection successful" : "Connection failed — check credentials and host";
+    }
+  } catch (err: any) {
+    success = false;
+    message = err?.message ?? "Connection failed";
+    req.log.warn({ err, sourceId: source.id }, "Data source connection test failed");
+  }
+
+  const latencyActual = Date.now() - start;
 
   await db.update(dataSourcesTable).set({
     status: success ? "connected" : "error",
@@ -94,7 +114,7 @@ router.post("/data-sources/:id/test", async (req, res): Promise<void> => {
 
   res.json(TestDataSourceConnectionResponse.parse({
     success,
-    message: success ? "Connection successful" : "Connection failed — check credentials and host",
+    message,
     latencyMs: latencyActual,
   }));
 });

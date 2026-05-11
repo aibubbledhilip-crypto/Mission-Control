@@ -50,7 +50,12 @@ export default function DataSources() {
 
   const handleSave = (andTest = false) => {
     if (!user?.tenantId) return;
-    const payload = { ...formData, tenantId: user.tenantId };
+    const { s3StagingDir, ...rest } = formData;
+    const payload = {
+      ...rest,
+      tenantId: user.tenantId,
+      ...(s3StagingDir ? { extraConfig: { s3StagingDir } } : {}),
+    };
     createMutation.mutate({ data: payload }, {
       onSuccess: (created) => {
         queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user.tenantId }) });
@@ -229,19 +234,10 @@ export default function DataSources() {
                   </div>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="s3Output">S3 Output Location</Label>
-                  <Input id="s3Output" value={formData.s3OutputLocation || ""} onChange={(e) => setFormData({...formData, s3OutputLocation: e.target.value})} className="bg-black/50 border-border" placeholder="s3://bucket/query-results/" />
+                  <Label htmlFor="s3Output">S3 Staging Directory</Label>
+                  <Input id="s3Output" value={formData.s3StagingDir || ""} onChange={(e) => setFormData({...formData, s3StagingDir: e.target.value})} className="bg-black/50 border-border" placeholder="s3://dvsum-staging-prod/" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="accessKeyId">Access Key ID</Label>
-                    <Input id="accessKeyId" value={formData.accessKeyId || ""} onChange={(e) => setFormData({...formData, accessKeyId: e.target.value})} className="bg-black/50 border-border" placeholder="AKIA..." />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="secretKey">Secret Access Key</Label>
-                    <Input type="password" id="secretKey" value={formData.secretKey || ""} onChange={(e) => setFormData({...formData, secretKey: e.target.value})} className="bg-black/50 border-border" />
-                  </div>
-                </div>
+                <p className="text-xs text-muted-foreground">AWS credentials are loaded from server environment variables.</p>
               </>
             )}
 
