@@ -3,12 +3,8 @@ export type NodeIcon =
   | "account" | "salesforce" | "matrixx" | "aria" | "oracle"
   | "database" | "api" | "server" | "cloud" | "shield" | "check";
 
-/**
- * Structured column-value validation: pass when the first result row's
- * `column` value IS (==) or is NOT (!=) in `values` (case-insensitive).
- */
-export interface NodeColumnValidation {
-  type: "columnValue";
+/** A single column check within a NodeColumnValidation */
+export interface NodeColumnCheck {
   /** Column in the SQL result to inspect */
   column: string;
   /** == exact match; != not equal; in → value is one of the list */
@@ -17,11 +13,36 @@ export interface NodeColumnValidation {
   values: string[];
 }
 
+/**
+ * Structured column-value validation: ALL checks must pass (AND logic).
+ * Each check inspects the first result row's column value against its list.
+ */
+export interface NodeColumnValidation {
+  type: "columnValue";
+  checks: NodeColumnCheck[];
+}
+
 export type NodeValidation = "rowCount > 0" | "rowCount === 0" | NodeColumnValidation;
 
 /** Type guard */
 export function isColumnValidation(v: NodeValidation): v is NodeColumnValidation {
   return typeof v === "object" && v !== null && (v as NodeColumnValidation).type === "columnValue";
+}
+
+/**
+ * Normalizes legacy single-column format `{ type, column, operator, values }`
+ * to the new `{ type, checks: [...] }` format. Safe to call on already-new format.
+ */
+export function normalizeColumnValidation(v: NodeColumnValidation): NodeColumnValidation {
+  // Legacy format had top-level column/operator/values
+  const legacy = v as unknown as { column?: string; operator?: string; values?: string[] };
+  if (legacy.column !== undefined && !Array.isArray((v as any).checks)) {
+    return {
+      type: "columnValue",
+      checks: [{ column: legacy.column, operator: (legacy.operator ?? "==") as NodeColumnCheck["operator"], values: legacy.values ?? [] }],
+    };
+  }
+  return v;
 }
 
 export interface FlowNode {

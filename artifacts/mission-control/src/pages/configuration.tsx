@@ -27,7 +27,9 @@ import {
   type NodeIcon,
   type NodeValidation,
   type NodeColumnValidation,
+  type NodeColumnCheck,
   isColumnValidation,
+  normalizeColumnValidation,
   COLORS,
   loadJourneyConfigs,
   saveJourneyConfigs,
@@ -59,45 +61,60 @@ export const ICON_MAP: Record<NodeIcon, React.FC<{ className?: string }>> = Obje
   ICON_OPTIONS.map(o => [o.id, o.Icon])
 ) as Record<NodeIcon, React.FC<{ className?: string }>>;
 
-// ─── Node Column Validation Sub-Form ─────────────────────────────────────────
+// ─── Single Column Check Row ──────────────────────────────────────────────────
 
-function NodeColumnValidationForm({
-  cv,
-  node,
-  onChange,
+function NodeColumnCheckRow({
+  chk,
+  index,
+  total,
+  onUpdate,
+  onRemove,
 }: {
-  cv: NodeColumnValidation;
-  node: FlowNode;
-  onChange: (updated: FlowNode) => void;
+  chk: NodeColumnCheck;
+  index: number;
+  total: number;
+  onUpdate: (updated: NodeColumnCheck) => void;
+  onRemove: () => void;
 }) {
   const [manualVal, setManualVal] = useState("");
 
   function addVal() {
     const v = manualVal.trim();
-    if (v && !cv.values.some(x => x.toLowerCase() === v.toLowerCase())) {
-      onChange({ ...node, validation: { ...cv, values: [...cv.values, v] } });
+    if (v && !chk.values.some(x => x.toLowerCase() === v.toLowerCase())) {
+      onUpdate({ ...chk, values: [...chk.values, v] });
     }
     setManualVal("");
   }
 
   return (
-    <div className="space-y-2 bg-black/20 rounded-lg p-3 border border-border/30">
+    <div className="rounded-md border border-border/40 bg-black/20 p-2.5 space-y-2">
+      {/* Header row: AND label + delete */}
+      <div className="flex items-center justify-between">
+        {index > 0 && (
+          <span className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-wider">AND</span>
+        )}
+        {index === 0 && <span className="text-[10px] text-muted-foreground">Check {index + 1}</span>}
+        {total > 1 && (
+          <button onClick={onRemove} className="text-muted-foreground hover:text-red-400 transition-colors ml-auto">
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
       {/* Column + Operator */}
       <div className="flex gap-2">
         <div className="flex-1">
-          <Label className="text-[10px] text-muted-foreground mb-1 block">Column</Label>
           <Input
-            value={cv.column}
-            onChange={e => onChange({ ...node, validation: { ...cv, column: e.target.value } })}
+            value={chk.column}
+            onChange={e => onUpdate({ ...chk, column: e.target.value })}
             className="h-7 bg-black/50 border-border text-white text-xs font-mono"
-            placeholder="e.g. acct_status"
+            placeholder="column name"
           />
         </div>
         <div className="shrink-0">
-          <Label className="text-[10px] text-muted-foreground mb-1 block">Operator</Label>
           <Select
-            value={cv.operator}
-            onValueChange={v => onChange({ ...node, validation: { ...cv, operator: v as "==" | "!=" | "in" } })}
+            value={chk.operator}
+            onValueChange={v => onUpdate({ ...chk, operator: v as NodeColumnCheck["operator"] })}
           >
             <SelectTrigger className="h-7 w-24 bg-black/50 border-border text-white text-xs">
               <SelectValue />
@@ -112,47 +129,89 @@ function NodeColumnValidationForm({
       </div>
 
       {/* Expected values (pills) */}
-      <div>
-        <Label className="text-[10px] text-muted-foreground mb-1 block">Expected value(s) — any match = PASS</Label>
-        <div className="flex flex-wrap gap-1 min-h-7 bg-black/50 border border-border rounded-md px-2 py-1.5 mb-1.5">
-          {cv.values.length === 0 && (
-            <span className="text-[11px] text-muted-foreground/40 self-center">No values yet</span>
-          )}
-          {cv.values.map(v => (
-            <span key={v} className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
-              {v}
-              <button
-                onClick={() => onChange({ ...node, validation: { ...cv, values: cv.values.filter(x => x !== v) } })}
-                className="hover:text-red-400"
-              >
-                <X className="w-2.5 h-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-        <div className="flex gap-1.5">
-          <Input
-            value={manualVal}
-            onChange={e => setManualVal(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addVal(); } }}
-            className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
-            placeholder="type value, Enter to add"
-          />
-          <Button
-            variant="outline" size="sm"
-            className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0"
-            onClick={addVal}
-            disabled={!manualVal.trim()}
-          >
-            Add
-          </Button>
-        </div>
+      <div className="flex flex-wrap gap-1 min-h-6 bg-black/50 border border-border rounded-md px-2 py-1.5">
+        {chk.values.length === 0 && (
+          <span className="text-[11px] text-muted-foreground/40 self-center">No values</span>
+        )}
+        {chk.values.map(v => (
+          <span key={v} className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
+            {v}
+            <button onClick={() => onUpdate({ ...chk, values: chk.values.filter(x => x !== v) })} className="hover:text-red-400">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
       </div>
+      <div className="flex gap-1.5">
+        <Input
+          value={manualVal}
+          onChange={e => setManualVal(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addVal(); } }}
+          className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
+          placeholder="type value, Enter to add"
+        />
+        <Button variant="outline" size="sm" className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0" onClick={addVal} disabled={!manualVal.trim()}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-      <p className="text-[10px] text-muted-foreground">
-        Node is GREEN when <code className="text-primary font-mono">{cv.column || "column"}</code>{" "}
-        {cv.operator === "!=" ? "does not match any of the expected values" : "matches one of the expected values"}.
-      </p>
+// ─── Node Column Validation Sub-Form ─────────────────────────────────────────
+
+function NodeColumnValidationForm({
+  cv: rawCv,
+  node,
+  onChange,
+}: {
+  cv: NodeColumnValidation;
+  node: FlowNode;
+  onChange: (updated: FlowNode) => void;
+}) {
+  const cv = normalizeColumnValidation(rawCv);
+
+  function updateCheck(i: number, updated: NodeColumnCheck) {
+    const checks = cv.checks.map((c, idx) => idx === i ? updated : c);
+    onChange({ ...node, validation: { ...cv, checks } });
+  }
+
+  function removeCheck(i: number) {
+    const checks = cv.checks.filter((_, idx) => idx !== i);
+    onChange({ ...node, validation: { ...cv, checks } });
+  }
+
+  function addCheck() {
+    onChange({ ...node, validation: { ...cv, checks: [...cv.checks, { column: "", operator: "==" as const, values: [] }] } });
+  }
+
+  return (
+    <div className="space-y-2 bg-black/20 rounded-lg p-3 border border-border/30">
+      <div className="space-y-2">
+        {cv.checks.length === 0 && (
+          <p className="text-[11px] text-muted-foreground/50 text-center py-1">No column checks yet</p>
+        )}
+        {cv.checks.map((chk, i) => (
+          <NodeColumnCheckRow
+            key={i}
+            chk={chk}
+            index={i}
+            total={cv.checks.length}
+            onUpdate={updated => updateCheck(i, updated)}
+            onRemove={() => removeCheck(i)}
+          />
+        ))}
+      </div>
+      <Button
+        variant="outline" size="sm"
+        className="w-full h-7 text-[11px] border-dashed border-border/60 hover:bg-white/5 hover:border-border text-muted-foreground"
+        onClick={addCheck}
+      >
+        <Plus className="w-3 h-3 mr-1.5" /> Add column check
+      </Button>
+      {cv.checks.length > 1 && (
+        <p className="text-[10px] text-amber-400/70">All checks must pass (AND logic).</p>
+      )}
     </div>
   );
 }
@@ -334,8 +393,8 @@ function NodeEditorRow({
                     onClick={() => {
                       if (mode === "columnValue") {
                         const cv: NodeColumnValidation = isColumnValidation(node.validation)
-                          ? node.validation
-                          : { type: "columnValue", column: "", operator: "==", values: [] };
+                          ? normalizeColumnValidation(node.validation)
+                          : { type: "columnValue", checks: [] };
                         onChange({ ...node, validation: cv });
                       } else {
                         onChange({ ...node, validation: mode });
