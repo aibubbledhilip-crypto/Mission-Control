@@ -106,12 +106,12 @@ function HomeRedirect() {
   );
 }
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+function ProtectedRoute({ component: Component, params }: { component: React.ComponentType<any>; params?: Record<string, string> }) {
   return (
     <>
       <Show when="signed-in">
         <MainLayout>
-          <Component />
+          <Component params={params} />
         </MainLayout>
       </Show>
       <Show when="signed-out">
@@ -164,7 +164,7 @@ function ClerkProviderWithRoutes() {
           <Route path="/sign-up/*?" component={SignUpPage} />
           <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
           <Route path="/journeys"><ProtectedRoute component={Journeys} /></Route>
-          <Route path="/journeys/:id"><ProtectedRoute component={JourneyDetail} /></Route>
+          <Route path="/journeys/:id">{(params) => <ProtectedRoute component={JourneyDetail} params={params} />}</Route>
           <Route path="/data-sources"><ProtectedRoute component={DataSources} /></Route>
           <Route path="/tenants"><ProtectedRoute component={Tenants} /></Route>
           <Route path="/users"><ProtectedRoute component={Users} /></Route>
