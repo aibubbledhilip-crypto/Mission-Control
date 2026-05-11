@@ -2,7 +2,6 @@ import { useState } from "react";
 import { 
   useListDataSources, 
   useCreateDataSource, 
-  useUpdateDataSource, 
   useDeleteDataSource,
   useTestDataSourceConnection,
   getListDataSourcesQueryKey,
@@ -13,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Database, Plus, Trash2, Edit, CheckCircle2, XCircle, RefreshCw, Server } from "lucide-react";
+import { Database, Plus, Trash2, Edit, CheckCircle2, RefreshCw, Server } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,22 +48,30 @@ export default function DataSources() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = (andTest = false) => {
     if (!user?.tenantId) return;
-    
     const payload = { ...formData, tenantId: user.tenantId };
-    
-    if (editingId) {
-      // update mutation would go here if implemented in UI
-    } else {
-      createMutation.mutate({ data: payload }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user.tenantId }) });
+    createMutation.mutate({ data: payload }, {
+      onSuccess: (created) => {
+        queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user.tenantId }) });
+        if (andTest) {
+          testMutation.mutate({ id: created.id }, {
+            onSuccess: (res) => {
+              queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user.tenantId }) });
+              setIsDialogOpen(false);
+              toast({
+                title: res.success ? "Connection successful" : "Connection failed",
+                description: `${res.message} (${res.latencyMs}ms)`,
+                variant: res.success ? "default" : "destructive",
+              });
+            }
+          });
+        } else {
           setIsDialogOpen(false);
-          toast({ title: "Data source created" });
+          toast({ title: "Data source added" });
         }
-      });
-    }
+      }
+    });
   };
 
   const handleDelete = (id: number) => {
@@ -72,19 +79,6 @@ export default function DataSources() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user?.tenantId }) });
         toast({ title: "Data source deleted" });
-      }
-    });
-  };
-
-  const handleTest = (id: number) => {
-    testMutation.mutate({ id }, {
-      onSuccess: (res) => {
-        queryClient.invalidateQueries({ queryKey: getListDataSourcesQueryKey({ tenantId: user?.tenantId }) });
-        if (res.success) {
-          toast({ title: "Connection successful", description: `${res.message} (${res.latencyMs}ms)` });
-        } else {
-          toast({ title: "Connection failed", description: res.message, variant: "destructive" });
-        }
       }
     });
   };
@@ -143,10 +137,6 @@ export default function DataSources() {
                   {source.account && <div className="flex justify-between"><span className="text-muted-foreground">Account</span><span className="text-white font-mono">{source.account}</span></div>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => handleTest(source.id)} disabled={testMutation.isPending && testMutation.variables?.id === source.id} className="flex-1 bg-white/5 border-border hover:bg-white/10 hover:text-white">
-                    {testMutation.isPending && testMutation.variables?.id === source.id ? <RefreshCw className="w-3 h-3 mr-2 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-2" />}
-                    Test
-                  </Button>
                   <Button variant="outline" size="icon" className="bg-white/5 border-border hover:bg-white/10 hover:text-white">
                     <Edit className="w-3 h-3" />
                   </Button>
@@ -270,8 +260,12 @@ export default function DataSources() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={createMutation.isPending || !formData.name} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              Save Source
+            <Button variant="outline" onClick={() => handleSave(false)} disabled={createMutation.isPending || testMutation.isPending || !formData.name} className="border-border">
+              Save
+            </Button>
+            <Button onClick={() => handleSave(true)} disabled={createMutation.isPending || testMutation.isPending || !formData.name} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+              {(createMutation.isPending || testMutation.isPending) ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              Save & Test
             </Button>
           </DialogFooter>
         </DialogContent>

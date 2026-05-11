@@ -40,10 +40,6 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" className="hidden md:flex border-primary/30 hover:border-primary text-primary hover:bg-primary/10">
-          Test Connection
-        </Button>
-
         <Button variant="ghost" size="icon" className="relative rounded-full text-muted-foreground hover:text-white">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary border-2 border-background"></span>
