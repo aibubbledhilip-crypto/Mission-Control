@@ -5,6 +5,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { pool } from "@workspace/db";
 
 const PgStore = connectPgSimple(session);
 
@@ -37,9 +38,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(
   session({
     store: new PgStore({
-      conString: process.env.DATABASE_URL,
+      pool,
       tableName: "sessions",
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     secret: process.env.SESSION_SECRET ?? "change-me-in-production",
     resave: false,
