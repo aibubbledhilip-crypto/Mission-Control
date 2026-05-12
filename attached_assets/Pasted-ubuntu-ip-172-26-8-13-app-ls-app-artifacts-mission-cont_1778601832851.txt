@@ -1,0 +1,28 @@
+ubuntu@ip-172-26-8-13:~/app$ ls ~/app/artifacts/mission-control/dist/public/index.html 2>/dev/null && echo "BUILD OK" || echo "MISSING - need to rebuild"
+MISSING - need to rebuild
+ubuntu@ip-172-26-8-13:~/app$ sudo systemctl status nginx | head -10
+
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-05-12 15:56:57 UTC; 6min ago
+       Docs: man:nginx(8)
+    Process: 3752 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 3755 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 3791 ExecReload=/usr/sbin/nginx -g daemon on; master_process on; -s reload (code=exited, status=0/SUCCESS)
+   Main PID: 3756 (nginx)
+      Tasks: 3 (limit: 2209)
+     Memory: 2.6M (peak: 4.5M)
+ubuntu@ip-172-26-8-13:~/app$ sudo ss -tlnp | grep :80
+
+LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=3794,fd=5),("nginx",pid=3793,fd=5),("nginx",pid=3756,fd=5))
+LISTEN 0      511                *:8080            *:*    users:(("node /home/ubun",pid=3613,fd=23))                                     
+ubuntu@ip-172-26-8-13:~/app$ pm2 status
+
+
+
+┌────┬────────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                   │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ mission-control-api    │ default     │ 0.0.0   │ fork    │ 3613     │ 9m     │ 0    │ online    │ 0%       │ 99.0mb   │ ubuntu   │ disabled │
+└────┴────────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+ubuntu@ip-172-26-8-13:~/app$ 
