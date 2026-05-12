@@ -1,0 +1,37 @@
+ubuntu@ip-172-26-8-13:~/app$ cd ~/app && git pull origin main && PORT=3000 BASE_PATH=/ pnpm --filter @workspace/mission-control run build && chmod -R 755 ~/app/artifacts/mission-control/dist/public && sudo systemctl reload nginx
+remote: Enumerating objects: 19, done.
+remote: Counting objects: 100% (19/19), done.
+remote: Compressing objects: 100% (5/5), done.
+remote: Total 13 (delta 8), reused 13 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (13/13), 16.96 KiB | 3.39 MiB/s, done.
+From https://github.com/aibubbledhilip-crypto/Mission-Control
+ * branch            main       -> FETCH_HEAD
+   0ab4a6d..4147929  main       -> origin/main
+Updating 0ab4a6d..4147929
+Fast-forward
+ artifacts/mission-control/src/App.tsx                                                 |  25 +++++++++++++++++++-
+ .../Pasted-ubuntu-ip-172-26-8-13-app-pm2-logs-TAILING-Tailing-last_1778606345873.txt  |  52 +++++++++++++++++++++++++++++++++++++++++
+ attached_assets/image_1778606044216.png                                               | Bin 0 -> 15453 bytes
+ attached_assets/image_1778606320177.png                                               | Bin 0 -> 13981 bytes
+ 4 files changed, 76 insertions(+), 1 deletion(-)
+ create mode 100644 attached_assets/Pasted-ubuntu-ip-172-26-8-13-app-pm2-logs-TAILING-Tailing-last_1778606345873.txt
+ create mode 100644 attached_assets/image_1778606044216.png
+ create mode 100644 attached_assets/image_1778606320177.png
+$ vite build --config vite.config.ts
+vite v7.3.2 building client environment for production...
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/label.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/avatar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/select.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/dropdown-menu.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+✓ 2153 modules transformed.
+dist/public/index.html                   1.40 kB │ gzip:   0.55 kB
+dist/public/assets/index-C2P-1gE4.css  129.57 kB │ gzip:  19.99 kB
+dist/public/assets/index-DX-RfqkW.js   553.07 kB │ gzip: 164.27 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 5.70s
+ubuntu@ip-172-26-8-13:~/app$ 
