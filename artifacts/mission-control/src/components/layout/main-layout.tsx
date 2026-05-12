@@ -17,7 +17,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <div className="flex flex-col flex-1 relative z-0 min-w-0">
         <Header />
         <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
-          <div className="container max-w-7xl mx-auto p-6 md:p-8">
+          <div className="p-6 md:p-8">
             {children}
           </div>
         </main>
