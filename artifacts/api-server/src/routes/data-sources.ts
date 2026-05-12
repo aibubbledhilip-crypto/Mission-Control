@@ -186,21 +186,43 @@ router.post("/data-sources/:id/query", async (req, res): Promise<void> => {
       return;
     }
 
-    // Fetch results
-    const results = await athena.send(new GetQueryResultsCommand({
-      QueryExecutionId: executionId,
-      MaxResults: 1000,
-    }));
+    // Fetch all result pages via NextToken pagination
+    let nextToken: string | undefined;
+    let headerRow: string[] = [];
+    const dataRows: Record<string, string>[] = [];
+    let firstPage = true;
 
-    const rows = results.ResultSet?.Rows ?? [];
-    const headerRow = rows[0]?.Data?.map(d => d.VarCharValue ?? "") ?? [];
-    const dataRows = rows.slice(1).map(row => {
-      const obj: Record<string, string> = {};
-      (row.Data ?? []).forEach((cell, i) => {
-        obj[headerRow[i] ?? `col${i}`] = cell.VarCharValue ?? "";
-      });
-      return obj;
-    });
+    do {
+      const results = await athena.send(new GetQueryResultsCommand({
+        QueryExecutionId: executionId,
+        MaxResults: 1000,
+        ...(nextToken ? { NextToken: nextToken } : {}),
+      }));
+
+      const rows = results.ResultSet?.Rows ?? [];
+
+      if (firstPage) {
+        headerRow = rows[0]?.Data?.map(d => d.VarCharValue ?? "") ?? [];
+        rows.slice(1).forEach(row => {
+          const obj: Record<string, string> = {};
+          (row.Data ?? []).forEach((cell, i) => {
+            obj[headerRow[i] ?? `col${i}`] = cell.VarCharValue ?? "";
+          });
+          dataRows.push(obj);
+        });
+        firstPage = false;
+      } else {
+        rows.forEach(row => {
+          const obj: Record<string, string> = {};
+          (row.Data ?? []).forEach((cell, i) => {
+            obj[headerRow[i] ?? `col${i}`] = cell.VarCharValue ?? "";
+          });
+          dataRows.push(obj);
+        });
+      }
+
+      nextToken = results.NextToken;
+    } while (nextToken);
 
     res.json(QueryDataSourceResponse.parse({
       executionId,
