@@ -166,8 +166,8 @@ router.post("/data-sources/:id/query", async (req, res): Promise<void> => {
 
     const executionId = startResult.QueryExecutionId!;
 
-    // Poll for completion (max 30s)
-    const deadline = Date.now() + 30_000;
+    // Poll for completion (max 5 min)
+    const deadline = Date.now() + 300_000;
     let state: QueryExecutionState | undefined;
     while (Date.now() < deadline) {
       const status = await athena.send(new GetQueryExecutionCommand({ QueryExecutionId: executionId }));
@@ -178,11 +178,11 @@ router.post("/data-sources/:id/query", async (req, res): Promise<void> => {
         res.status(422).json({ error: reason });
         return;
       }
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     if (state !== QueryExecutionState.SUCCEEDED) {
-      res.status(504).json({ error: "Query timed out after 30 seconds" });
+      res.status(504).json({ error: "Query timed out after 5 minutes" });
       return;
     }
 
