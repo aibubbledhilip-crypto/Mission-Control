@@ -1,0 +1,52 @@
+ubuntu@ip-172-26-8-13:~/app$ pm2 logs
+[TAILING] Tailing last 15 lines for [all] processes (change the value with --lines option)
+/home/ubuntu/.pm2/pm2.log last 15 lines:
+PM2        | 2026-05-12T17:10:14: PM2 log: Stopping app:mission-control-api id:0
+PM2        | 2026-05-12T17:10:14: PM2 log: App [mission-control-api:0] exited with code [0] via signal [SIGINT]
+PM2        | 2026-05-12T17:10:14: PM2 log: pid=4632 msg=process tree killed (1 pids)
+PM2        | 2026-05-12T17:10:14: PM2 log: App [mission-control-api:0] starting in -fork mode-
+PM2        | 2026-05-12T17:10:14: PM2 log: App [mission-control-api:0] online
+PM2        | 2026-05-12T17:12:44: PM2 log: Stopping app:mission-control-api id:0
+PM2        | 2026-05-12T17:12:44: PM2 log: App [mission-control-api:0] exited with code [0] via signal [SIGINT]
+PM2        | 2026-05-12T17:12:44: PM2 log: pid=4657 msg=process tree killed (1 pids)
+PM2        | 2026-05-12T17:12:44: PM2 log: App [mission-control-api:0] starting in -fork mode-
+PM2        | 2026-05-12T17:12:44: PM2 log: App [mission-control-api:0] online
+PM2        | 2026-05-12T17:17:32: PM2 log: Stopping app:mission-control-api id:0
+PM2        | 2026-05-12T17:17:32: PM2 log: App [mission-control-api:0] exited with code [0] via signal [SIGINT]
+PM2        | 2026-05-12T17:17:32: PM2 log: pid=4714 msg=process tree killed (1 pids)
+PM2        | 2026-05-12T17:17:32: PM2 log: App [mission-control-api:0] starting in -fork mode-
+PM2        | 2026-05-12T17:17:32: PM2 log: App [mission-control-api:0] online
+
+/home/ubuntu/.pm2/logs/mission-control-api-error.log last 15 lines:
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+0|mission- |     at async PGStore._rawEnsureSessionStoreTable (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:177:19)
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:315:7)
+0|mission- | error: no pg_hba.conf entry for host "172.26.8.13", user "dbmasteruser", database "dbmaster", no encryption
+0|mission- |     at <anonymous> (/home/ubuntu/app/node_modules/.pnpm/pg-pool@3.13.0_pg@8.20.0/node_modules/pg-pool/index.js:45:11)
+0|mission- |     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+0|mission- |     at async PGStore._rawEnsureSessionStoreTable (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:177:19)
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:315:7)
+0|mission- | error: no pg_hba.conf entry for host "172.26.8.13", user "dbmasteruser", database "dbmaster", no encryption
+0|mission- |     at <anonymous> (/home/ubuntu/app/node_modules/.pnpm/pg-pool@3.13.0_pg@8.20.0/node_modules/pg-pool/index.js:45:11)
+0|mission- |     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+0|mission- |     at async PGStore._rawEnsureSessionStoreTable (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:177:19)
+0|mission- |     at async PGStore._asyncQuery (/home/ubuntu/app/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:315:7)
+
+/home/ubuntu/.pm2/logs/mission-control-api-out.log last 15 lines:
+0|mission- | {"level":30,"time":1778606090131,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":29,"method":"GET","url":"/api/dashboard/summary"},"res":{"statusCode":200},"responseTime":37,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606090170,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":30,"method":"GET","url":"/api/activity"},"res":{"statusCode":200},"responseTime":4,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606090247,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":31,"method":"GET","url":"/api/dashboard/health"},"res":{"statusCode":200},"responseTime":5,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606090335,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":32,"method":"GET","url":"/api/dashboard/summary"},"res":{"statusCode":304},"responseTime":6,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606090412,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":33,"method":"GET","url":"/api/activity"},"res":{"statusCode":304},"responseTime":5,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606113045,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":34,"method":"GET","url":"/api/journeys"},"res":{"statusCode":304},"responseTime":46,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606113046,"pid":4714,"hostname":"ip-172-26-8-13","req":{"id":35,"method":"GET","url":"/api/users/me"},"res":{"statusCode":304},"responseTime":26,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606253307,"pid":4824,"hostname":"ip-172-26-8-13","port":8080,"msg":"Server listening"}
+0|mission- | {"level":30,"time":1778606271905,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":1,"method":"GET","url":"/api/auth/me"},"res":{"statusCode":304},"responseTime":56,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606272174,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":4,"method":"GET","url":"/api/users/me"},"res":{"statusCode":304},"responseTime":7,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606272186,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":2,"method":"GET","url":"/api/journeys"},"res":{"statusCode":200},"responseTime":37,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606272187,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":3,"method":"GET","url":"/api/dashboard/health"},"res":{"statusCode":200},"responseTime":32,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606272358,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":5,"method":"GET","url":"/api/journeys"},"res":{"statusCode":304},"responseTime":6,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606276957,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":6,"method":"GET","url":"/api/users/me"},"res":{"statusCode":304},"responseTime":5,"msg":"request completed"}
+0|mission- | {"level":30,"time":1778606276990,"pid":4824,"hostname":"ip-172-26-8-13","req":{"id":7,"method":"GET","url":"/api/data-sources"},"res":{"statusCode":304},"responseTime":6,"msg":"request completed"}

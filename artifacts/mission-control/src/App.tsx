@@ -5,6 +5,27 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { Component, type ReactNode, type ErrorInfo } from "react";
+
+class PageErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("Page render error:", error, info); }
+  render() {
+    if (this.state.error) {
+      const err = this.state.error as Error;
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-8">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-lg font-semibold text-white">This page failed to load</h2>
+          <pre className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-3 max-w-xl text-left whitespace-pre-wrap break-all">{err.message}</pre>
+          <button onClick={() => this.setState({ error: null })} className="text-xs text-muted-foreground underline hover:text-white">Try again</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 import MainLayout from "@/components/layout/main-layout";
 import Login from "@/pages/login";
@@ -47,7 +68,9 @@ function ProtectedRoute({ component: Component, params }: { component: React.Com
 
   return (
     <MainLayout>
-      <Component params={params} />
+      <PageErrorBoundary>
+        <Component params={params} />
+      </PageErrorBoundary>
     </MainLayout>
   );
 }
