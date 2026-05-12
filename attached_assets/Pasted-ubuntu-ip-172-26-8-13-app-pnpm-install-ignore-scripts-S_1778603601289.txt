@@ -1,0 +1,132 @@
+ubuntu@ip-172-26-8-13:~/app$ pnpm install --ignore-scripts
+Scope: all 9 workspace projects
+Already up to date
+Done in 558ms using pnpm v11.1.1
+ubuntu@ip-172-26-8-13:~/app$ cd ~/app && node --input-type=module << 'EOF'
+
+import pg from 'pg';
+
+const { Client } = pg;
+
+const client = new Client({ connectionString: process.env.DATABASE_URL });
+
+await client.connect();
+
+await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+
+await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text NOT NULL DEFAULT ''");
+
+await client.query("ALTER TABLE users DROP COLUMN IF EXISTS clerk_id");
+
+await client.query("ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT");
+
+console.log("Schema updated");
+
+await client.end();
+
+EOF
+node:internal/modules/package_json_reader:301
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'pg' imported from /home/ubuntu/app/[eval1]
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+    at packageResolve (node:internal/modules/esm/resolve:764:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:988:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:697:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:714:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:746:52)
+    at #resolve (node:internal/modules/esm/loader:679:17)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:599:35)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:162:33) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v24.15.0
+ubuntu@ip-172-26-8-13:~/app$ cd ~/app && node --input-type=module << 'EOF'
+
+import pg from 'pg';
+
+const { Client } = pg;
+
+const client = new Client({ connectionString: process.env.DATABASE_URL });
+
+await client.connect();
+
+await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+
+let tenantId;
+
+const t = await client.query("SELECT id FROM tenants LIMIT 1");
+
+if (t.rows.length === 0) {
+
+  const r = await client.query("INSERT INTO tenants (name, slug, plan) VALUES ('Default', 'default', 'enterprise') RETURNING id");
+
+  tenantId = r.rows[0].id;
+
+} else { tenantId = t.rows[0].id; }
+
+const h = await client.query("SELECT crypt($1, gen_salt('bf', 12)) AS hash", ["Admin1234!"]);
+
+await client.query(
+
+  `INSERT INTO users (email, password_hash, name, role, tenant_id, is_active) VALUES ($1, $2, $3, $4, $5, true) ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash`,
+
+  ["admin@missioncontrol.local", h.rows[0].hash, "Admin", "admin", tenantId]
+
+EOFit client.end();created — email: admin@missioncontrol.local / password: Admin1234!");
+node:internal/modules/package_json_reader:301
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'pg' imported from /home/ubuntu/app/[eval1]
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+    at packageResolve (node:internal/modules/esm/resolve:764:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:988:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:697:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:714:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:746:52)
+    at #resolve (node:internal/modules/esm/loader:679:17)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:599:35)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:162:33) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v24.15.0
+ubuntu@ip-172-26-8-13:~/app$ cd ~/app
+
+PORT=3000 BASE_PATH=/ pnpm --filter @workspace/mission-control run build
+
+pm2 restart mission-control-api
+
+chmod -R 755 ~/app/artifacts/mission-control/dist
+
+sudo systemctl reload nginx
+$ vite build --config vite.config.ts
+vite v7.3.2 building client environment for production...
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/label.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/avatar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/select.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/dropdown-menu.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+✓ 2238 modules transformed.
+dist/public/index.html                   1.40 kB │ gzip:   0.55 kB
+dist/public/assets/index-BCvFGNcW.css  129.30 kB │ gzip:  19.95 kB
+dist/public/assets/index-cyaOOAWZ.js   646.17 kB │ gzip: 187.82 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 7.12s
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [mission-control-api](ids: [ 0 ])
+[PM2] [mission-control-api](0) ✓
+┌────┬────────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                   │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ mission-control-api    │ default     │ 0.0.0   │ fork    │ 4013     │ 0s     │ 1    │ online    │ 0%       │ 18.8mb   │ ubuntu   │ disabled │
+└────┴────────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
