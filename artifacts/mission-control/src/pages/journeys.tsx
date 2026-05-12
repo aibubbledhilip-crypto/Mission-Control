@@ -606,51 +606,6 @@ function JourneyFlowCanvas({
                 </div>
               )}
 
-              {/* Validation rule */}
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Pass Condition</div>
-                {isColumnValidation(selectedNode.validation) ? (() => {
-                  const norm = normalizeColumnValidation(selectedNode.validation);
-                  return (
-                    <div className="space-y-1.5">
-                      {norm.checks.map((chk, i) => (
-                        <div key={i} className="space-y-0.5">
-                          {i > 0 && <div className="text-[9px] text-amber-400/70 font-semibold uppercase tracking-wider">AND</div>}
-                          <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
-                            {chk.column} {chk.operator === "==" ? "=" : chk.operator === "!=" ? "≠" : "IN"} [{chk.values.join(", ")}]
-                          </div>
-                          {selectedResult?.rows && selectedResult.rows.length > 0 && chk.column && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground">Actual:</span>
-                              {(() => {
-                                const actualVal = selectedResult.rows![0][chk.column] ?? "";
-                                const actualNorm = actualVal.toLowerCase().trim();
-                                const matches = chk.values.some(v => v.toLowerCase().trim() === actualNorm);
-                                const checkPassed = chk.operator === "!=" ? !matches : matches;
-                                return (
-                                  <span className={cn(
-                                    "text-xs font-mono px-2 py-0.5 rounded border",
-                                    checkPassed
-                                      ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                                      : "text-red-400 bg-red-500/10 border-red-500/20"
-                                  )}>
-                                    {actualVal || <em className="not-italic text-muted-foreground">null</em>}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })() : (
-                  <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
-                    {selectedNode.validation}
-                  </div>
-                )}
-              </div>
-
               {/* Parent */}
               {selectedNode.parentNodeId && (
                 <div>
