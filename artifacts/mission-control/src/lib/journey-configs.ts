@@ -107,6 +107,16 @@ export interface JourneyConfig {
   flowNodes?: FlowNode[];
 }
 
+function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 const CONFIG_KEY = "mc-journey-configs-v2";
 
 export function loadJourneyConfigs(): JourneyConfig[] {
@@ -127,7 +137,7 @@ export const COLORS = [
 
 export function newFlowNode(partial?: Partial<FlowNode>): FlowNode {
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     name: "New Node",
     icon: "database",
     parentNodeId: null,
@@ -139,7 +149,7 @@ export function newFlowNode(partial?: Partial<FlowNode>): FlowNode {
 
 export function newFlowCondition(partial?: Partial<FlowCondition>): FlowCondition {
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     name: "New Condition",
     matchColumn: "order_type",
     matchValue: [],
@@ -187,7 +197,7 @@ export function resolveActiveNodes(
 
 export function newConfig(idx: number): JourneyConfig {
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     name: `Group ${idx + 1}`,
     color: COLORS[idx % COLORS.length],
     type: "manual",
