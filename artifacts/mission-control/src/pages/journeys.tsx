@@ -498,6 +498,7 @@ function JourneyFlowCanvas({
                     <defs>
                       <filter id="fc-glow-g"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
                       <filter id="fc-glow-r"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                      <filter id="fc-glow-y"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
                     </defs>
                     {flowNodes.filter(n => n.parentNodeId).map(node => {
                       const parent = flowNodes.find(p => p.id === node.parentNodeId);
@@ -510,14 +511,16 @@ function JourneyFlowCanvas({
                       const ex = cp.x + NODE_RADIUS, ey = cp.y + NODE_RADIUS;
                       const mx = (sx + ex) / 2;
                       const childResult = nodeResults[node.id];
-                      const color = childResult?.status === "pass" ? "#10b981" : childResult?.status === "fail" ? "#ef4444" : childResult?.status === "error" ? "#f59e0b" : "#334155";
-                      const animated = childResult?.status === "pass" || childResult?.status === "fail";
+                      const s = childResult?.status;
+                      const color = s === "pass" ? "#10b981" : s === "fail" ? "#ef4444" : s === "warn" ? "#f59e0b" : s === "error" ? "#f59e0b" : "#334155";
+                      const animated = s === "pass" || s === "fail" || s === "warn";
+                      const glowFilter = s === "pass" ? "url(#fc-glow-g)" : s === "fail" ? "url(#fc-glow-r)" : s === "warn" ? "url(#fc-glow-y)" : undefined;
                       const d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ey}, ${ex} ${ey}`;
                       return (
                         <g key={`e-${node.id}`}>
                           <path d={d} fill="none" stroke={color} strokeWidth="6" strokeOpacity="0.12" />
                           <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeOpacity={animated ? 0.9 : 0.35}
-                            filter={animated ? (childResult?.status === "pass" ? "url(#fc-glow-g)" : "url(#fc-glow-r)") : undefined} />
+                            filter={animated ? glowFilter : undefined} />
                         </g>
                       );
                     })}
