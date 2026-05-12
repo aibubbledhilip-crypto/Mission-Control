@@ -1,0 +1,62 @@
+ubuntu@ip-172-26-8-13:~/app/lib/db$ export DATABASE_URL="postgresql://dbmasteruser:HgzGr%pL^kEFY-lv{*N^H}F[.C<<X3h0@ls-57c09b2c3e03e4e8178dfafd2b7a8436a7bebaae.ccd22ywo8omh.us-east-1.rds.amazonaws.com:5432/dbmaster"
+
+
+
+cd ~/app/lib/db && node --input-type=module << 'EOF'
+
+import pg from 'pg';
+
+const { Client } = pg;
+
+const client = new Client({ connectionString: process.env.DATABASE_URL });
+
+await client.connect();
+
+await client.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+
+await client.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text NOT NULL DEFAULT ''");
+
+await client.query("ALTER TABLE users DROP COLUMN IF EXISTS clerk_id");
+
+await client.query("ALTER TABLE users ALTER COLUMN password_hash DROP DEFAULT");
+
+console.log("Schema updated");
+
+await client.end();
+
+EOF
+/home/ubuntu/app/node_modules/.pnpm/pg-protocol@1.13.0/node_modules/pg-protocol/dist/parser.js:305
+        : new messages_1.DatabaseError(messageValue, LATEINIT_LENGTH, name);
+          ^
+
+error: no pg_hba.conf entry for host "172.26.8.13", user "dbmasteruser", database "dbmaster", no encryption
+    at parseErrorMessage (/home/ubuntu/app/node_modules/.pnpm/pg-protocol@1.13.0/node_modules/pg-protocol/dist/parser.js:305:11)
+    at Parser.handlePacket (/home/ubuntu/app/node_modules/.pnpm/pg-protocol@1.13.0/node_modules/pg-protocol/dist/parser.js:143:27)
+    at Parser.parse (/home/ubuntu/app/node_modules/.pnpm/pg-protocol@1.13.0/node_modules/pg-protocol/dist/parser.js:37:38)
+    at Socket.<anonymous> (/home/ubuntu/app/node_modules/.pnpm/pg-protocol@1.13.0/node_modules/pg-protocol/dist/index.js:11:42)
+    at Socket.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23) {
+  length: 163,
+  severity: 'FATAL',
+  code: '28000',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'auth.c',
+  line: '530',
+  routine: 'ClientAuthentication'
+}
+
+Node.js v24.15.0
+ubuntu@ip-172-26-8-13:~/app/lib/db$ 
