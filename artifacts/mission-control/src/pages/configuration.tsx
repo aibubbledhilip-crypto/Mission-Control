@@ -67,16 +67,19 @@ function NodeColumnCheckRow({
   chk,
   index,
   total,
+  allNodes,
   onUpdate,
   onRemove,
 }: {
   chk: NodeColumnCheck;
   index: number;
   total: number;
+  allNodes: FlowNode[];
   onUpdate: (updated: NodeColumnCheck) => void;
   onRemove: () => void;
 }) {
   const [manualVal, setManualVal] = useState("");
+  const isCrossNode = !!(chk.sourceNodeId);
 
   function addVal() {
     const v = manualVal.trim();
@@ -86,29 +89,56 @@ function NodeColumnCheckRow({
     setManualVal("");
   }
 
+  function switchToCrossNode() {
+    const op = chk.operator === "in" ? "==" : chk.operator;
+    onUpdate({ ...chk, operator: op as NodeColumnCheck["operator"], sourceNodeId: allNodes[0]?.id ?? "", sourceColumn: "" });
+  }
+
+  function switchToStatic() {
+    const { sourceNodeId: _a, sourceColumn: _b, ...rest } = chk;
+    onUpdate({ ...rest, values: chk.values });
+  }
+
   return (
     <div className="rounded-md border border-border/40 bg-black/20 p-2.5 space-y-2">
-      {/* Header row: AND label + delete */}
-      <div className="flex items-center justify-between">
-        {index > 0 && (
-          <span className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-wider">AND</span>
-        )}
-        {index === 0 && <span className="text-[10px] text-muted-foreground">Check {index + 1}</span>}
-        {total > 1 && (
-          <button onClick={onRemove} className="text-muted-foreground hover:text-red-400 transition-colors ml-auto">
-            <X className="w-3 h-3" />
-          </button>
-        )}
+      {/* Header: AND label + mode toggle + delete */}
+      <div className="flex items-center justify-between gap-2">
+        {index > 0
+          ? <span className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-wider">AND</span>
+          : <span className="text-[10px] text-muted-foreground">Check {index + 1}</span>
+        }
+        <div className="flex items-center gap-1 ml-auto">
+          {/* Mode toggle */}
+          <div className="flex rounded overflow-hidden border border-border/50 text-[10px]">
+            <button
+              onClick={switchToStatic}
+              className={cn("px-2 py-0.5 transition-colors", !isCrossNode ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-white/5")}
+            >
+              Static
+            </button>
+            <button
+              onClick={switchToCrossNode}
+              className={cn("px-2 py-0.5 transition-colors border-l border-border/50", isCrossNode ? "bg-sky-500/20 text-sky-400" : "text-muted-foreground hover:bg-white/5")}
+            >
+              Node
+            </button>
+          </div>
+          {total > 1 && (
+            <button onClick={onRemove} className="text-muted-foreground hover:text-red-400 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Column + Operator */}
+      {/* This node's column + operator */}
       <div className="flex gap-2">
         <div className="flex-1">
           <Input
             value={chk.column}
             onChange={e => onUpdate({ ...chk, column: e.target.value })}
             className="h-7 bg-black/50 border-border text-white text-xs font-mono"
-            placeholder="column name"
+            placeholder="this node's column"
           />
         </div>
         <div className="shrink-0">
@@ -122,38 +152,78 @@ function NodeColumnCheckRow({
             <SelectContent className="bg-card border-border">
               <SelectItem value="==" className="text-xs font-mono">= equals</SelectItem>
               <SelectItem value="!=" className="text-xs font-mono">≠ not equal</SelectItem>
-              <SelectItem value="in" className="text-xs font-mono">IN list</SelectItem>
+              {!isCrossNode && <SelectItem value="in" className="text-xs font-mono">IN list</SelectItem>}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* Expected values (pills) */}
-      <div className="flex flex-wrap gap-1 min-h-6 bg-black/50 border border-border rounded-md px-2 py-1.5">
-        {chk.values.length === 0 && (
-          <span className="text-[11px] text-muted-foreground/40 self-center">No values</span>
-        )}
-        {chk.values.map(v => (
-          <span key={v} className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
-            {v}
-            <button onClick={() => onUpdate({ ...chk, values: chk.values.filter(x => x !== v) })} className="hover:text-red-400">
-              <X className="w-2.5 h-2.5" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-1.5">
-        <Input
-          value={manualVal}
-          onChange={e => setManualVal(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addVal(); } }}
-          className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
-          placeholder="type value, Enter to add"
-        />
-        <Button variant="outline" size="sm" className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0" onClick={addVal} disabled={!manualVal.trim()}>
-          Add
-        </Button>
-      </div>
+      {isCrossNode ? (
+        /* Cross-node: pick a source node + column */
+        <div className="space-y-1.5 bg-sky-500/5 border border-sky-500/20 rounded-md p-2">
+          <div className="text-[10px] text-sky-400/80 font-medium mb-1">Compare against another node</div>
+          <Select
+            value={chk.sourceNodeId ?? ""}
+            onValueChange={v => onUpdate({ ...chk, sourceNodeId: v })}
+          >
+            <SelectTrigger className="h-7 w-full bg-black/50 border-border text-white text-xs">
+              <SelectValue placeholder="Select node…" />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border">
+              {allNodes.map(n => {
+                const NIcon = ICON_MAP[n.icon] ?? Database;
+                return (
+                  <SelectItem key={n.id} value={n.id} className="text-xs">
+                    <span className="flex items-center gap-2">
+                      <NIcon className="w-3 h-3" /> {n.name}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <Input
+            value={chk.sourceColumn ?? ""}
+            onChange={e => onUpdate({ ...chk, sourceColumn: e.target.value })}
+            className="h-7 bg-black/50 border-border text-white text-xs font-mono"
+            placeholder="source node's column name"
+          />
+          {chk.sourceNodeId && chk.sourceColumn && chk.column && (
+            <div className="text-[10px] text-sky-400/70 font-mono bg-sky-500/5 rounded px-1.5 py-1">
+              {chk.column} {chk.operator === "!=" ? "≠" : "="} {allNodes.find(n => n.id === chk.sourceNodeId)?.name ?? "…"}.{chk.sourceColumn}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Static: pill-based value list */
+        <>
+          <div className="flex flex-wrap gap-1 min-h-6 bg-black/50 border border-border rounded-md px-2 py-1.5">
+            {chk.values.length === 0 && (
+              <span className="text-[11px] text-muted-foreground/40 self-center">No values</span>
+            )}
+            {chk.values.map(v => (
+              <span key={v} className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-0.5 text-[10px] font-mono">
+                {v}
+                <button onClick={() => onUpdate({ ...chk, values: chk.values.filter(x => x !== v) })} className="hover:text-red-400">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <Input
+              value={manualVal}
+              onChange={e => setManualVal(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addVal(); } }}
+              className="flex-1 h-6 text-[10px] bg-black/50 border-border text-white font-mono px-2"
+              placeholder="type value, Enter to add"
+            />
+            <Button variant="outline" size="sm" className="h-6 text-[10px] border-border hover:bg-white/5 px-2 shrink-0" onClick={addVal} disabled={!manualVal.trim()}>
+              Add
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -163,13 +233,16 @@ function NodeColumnCheckRow({
 function NodeColumnValidationForm({
   cv: rawCv,
   node,
+  allNodes,
   onChange,
 }: {
   cv: NodeColumnValidation;
   node: FlowNode;
+  allNodes: FlowNode[];
   onChange: (updated: FlowNode) => void;
 }) {
   const cv = normalizeColumnValidation(rawCv);
+  const otherNodes = allNodes.filter(n => n.id !== node.id);
 
   function updateCheck(i: number, updated: NodeColumnCheck) {
     const checks = cv.checks.map((c, idx) => idx === i ? updated : c);
@@ -197,6 +270,7 @@ function NodeColumnValidationForm({
             chk={chk}
             index={i}
             total={cv.checks.length}
+            allNodes={otherNodes}
             onUpdate={updated => updateCheck(i, updated)}
             onRemove={() => removeCheck(i)}
           />
@@ -415,7 +489,7 @@ function NodeEditorRow({
 
             {/* Column value sub-form */}
             {isColumnValidation(node.validation) ? (
-              <NodeColumnValidationForm cv={node.validation} node={node} onChange={onChange} />
+              <NodeColumnValidationForm cv={node.validation} node={node} allNodes={allNodes} onChange={onChange} />
             ) : (
               <p className="text-[10px] text-muted-foreground">
                 {node.validation === "rowCount > 0"

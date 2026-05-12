@@ -64,7 +64,8 @@ interface NodeResult {
 function evaluateValidation(
   validation: NodeValidation,
   rowCount: number,
-  rows: Record<string, string>[]
+  rows: Record<string, string>[],
+  allNodeResults?: Record<string, NodeResult>
 ): { passed: boolean; noData?: boolean; checkedColumn?: string; checkedValue?: string } {
   if (typeof validation === "string") {
     const passed = validation === "rowCount > 0" ? rowCount > 0 : rowCount === 0;
@@ -79,9 +80,20 @@ function evaluateValidation(
     for (const chk of norm.checks) {
       const actualVal = rows[0][chk.column] ?? "";
       const actualNorm = actualVal.toLowerCase().trim();
-      const matches = chk.values.some(v => v.toLowerCase().trim() === actualNorm);
-      const checkPassed = chk.operator === "!=" ? !matches : matches;
-      if (!checkPassed) return { passed: false };
+
+      if (chk.sourceNodeId && chk.sourceColumn) {
+        // Cross-node comparison: compare this column against another node's column
+        const sourceResult = allNodeResults?.[chk.sourceNodeId];
+        const sourceVal = (sourceResult?.rows?.[0]?.[chk.sourceColumn] ?? "").toLowerCase().trim();
+        const matches = actualNorm === sourceVal;
+        const checkPassed = chk.operator === "!=" ? !matches : matches;
+        if (!checkPassed) return { passed: false };
+      } else {
+        // Static value comparison
+        const matches = chk.values.some(v => v.toLowerCase().trim() === actualNorm);
+        const checkPassed = chk.operator === "!=" ? !matches : matches;
+        if (!checkPassed) return { passed: false };
+      }
     }
     return { passed: true };
   }
@@ -272,7 +284,8 @@ function JourneyFlowCanvas({
         const result = await resp.json();
         const rowCount: number = result.rowCount ?? 0;
         const rows: Record<string, string>[] = result.rows?.slice(0, 5) ?? [];
-        const { passed, noData, checkedColumn, checkedValue } = evaluateValidation(node.validation, rowCount, rows);
+        // Initial evaluation — cross-node checks resolved in a second pass after all nodes complete
+        const { passed, noData, checkedColumn, checkedValue } = evaluateValidation(node.validation, rowCount, rows, {});
         const status: NodeStatus = passed ? "pass" : noData ? "warn" : "fail";
         setNodeResults(r => ({ ...r, [node.id]: { status, rowCount, rows, checkedColumn, checkedValue } }));
       } catch (err: any) {
@@ -281,6 +294,28 @@ function JourneyFlowCanvas({
       }
     });
   }, [bancan, config.id, conditionKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Cross-node validation second pass: re-evaluate once all nodes have results ──
+  useEffect(() => {
+    const statuses = Object.values(nodeResults).map(r => r.status);
+    if (statuses.length === 0 || statuses.some(s => s === "loading")) return;
+    let changed = false;
+    const updated = { ...nodeResults };
+    for (const node of flowNodes) {
+      if (!isColumnValidation(node.validation)) continue;
+      const norm = normalizeColumnValidation(node.validation);
+      if (!norm.checks.some(c => c.sourceNodeId)) continue;
+      const result = nodeResults[node.id];
+      if (!result?.rows) continue;
+      const { passed, noData } = evaluateValidation(node.validation, result.rowCount ?? 0, result.rows, nodeResults);
+      const newStatus: NodeStatus = passed ? "pass" : noData ? "warn" : "fail";
+      if (newStatus !== result.status) {
+        updated[node.id] = { ...result, status: newStatus };
+        changed = true;
+      }
+    }
+    if (changed) setNodeResults(updated);
+  }, [nodeResults]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Window-level mouse handlers (attached once, use refs everywhere) ──
   useEffect(() => {
@@ -637,13 +672,22 @@ function JourneyFlowCanvas({
                       {norm.checks.map((chk, i) => {
                         const actualVal = selectedResult?.rows?.[0]?.[chk.column] ?? "";
                         const actualNorm = actualVal.toLowerCase().trim();
-                        const matches = chk.values.some(v => v.toLowerCase().trim() === actualNorm);
-                        const checkPassed = chk.operator === "!=" ? !matches : matches;
+                        const isCrossNode = !!(chk.sourceNodeId && chk.sourceColumn);
+                        const sourceNode = isCrossNode ? flowNodes.find(n => n.id === chk.sourceNodeId) : undefined;
+                        const sourceVal = isCrossNode
+                          ? (nodeResults[chk.sourceNodeId!]?.rows?.[0]?.[chk.sourceColumn!] ?? "")
+                          : "";
+                        const checkPassed = isCrossNode
+                          ? (chk.operator === "!=" ? actualNorm !== sourceVal.toLowerCase().trim() : actualNorm === sourceVal.toLowerCase().trim())
+                          : (chk.operator === "!=" ? !chk.values.some(v => v.toLowerCase().trim() === actualNorm) : chk.values.some(v => v.toLowerCase().trim() === actualNorm));
                         return (
                           <div key={i} className="space-y-1">
                             {i > 0 && <div className="text-[9px] text-amber-400/70 font-semibold uppercase tracking-wider">AND</div>}
                             <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
-                              {chk.column} {chk.operator === "==" ? "=" : chk.operator === "!=" ? "≠" : "IN"} [{chk.values.join(", ")}]
+                              {isCrossNode
+                                ? <>{chk.column} {chk.operator === "!=" ? "≠" : "="} <span className="text-sky-400">{sourceNode?.name ?? chk.sourceNodeId}</span>.{chk.sourceColumn}</>
+                                : <>{chk.column} {chk.operator === "==" ? "=" : chk.operator === "!=" ? "≠" : "IN"} [{chk.values.join(", ")}]</>
+                              }
                             </div>
                             {selectedResult?.rowCount === 0 ? (
                               <div className="flex items-center gap-1.5">
@@ -653,16 +697,26 @@ function JourneyFlowCanvas({
                                 </span>
                               </div>
                             ) : actualVal ? (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-muted-foreground">Actual:</span>
-                                <span className={cn(
-                                  "text-xs font-mono px-2 py-0.5 rounded border",
-                                  checkPassed
-                                    ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                                    : "text-red-400 bg-red-500/10 border-red-500/20"
-                                )}>
-                                  {actualVal}
-                                </span>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-muted-foreground">This node:</span>
+                                  <span className={cn(
+                                    "text-xs font-mono px-2 py-0.5 rounded border",
+                                    checkPassed
+                                      ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                      : "text-red-400 bg-red-500/10 border-red-500/20"
+                                  )}>
+                                    {actualVal}
+                                  </span>
+                                </div>
+                                {isCrossNode && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-muted-foreground">{sourceNode?.name ?? "Source"}:</span>
+                                    <span className="text-xs font-mono px-2 py-0.5 rounded border text-sky-400 bg-sky-500/10 border-sky-500/20">
+                                      {sourceVal || <span className="opacity-50">no data</span>}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             ) : null}
                           </div>

@@ -5,12 +5,19 @@ export type NodeIcon =
 
 /** A single column check within a NodeColumnValidation */
 export interface NodeColumnCheck {
-  /** Column in the SQL result to inspect */
+  /** Column in this node's SQL result to inspect */
   column: string;
   /** == exact match; != not equal; in → value is one of the list */
   operator: "==" | "!=" | "in";
-  /** Expected value(s) — case-insensitive OR match */
+  /** Expected static value(s) — used when sourceNodeId is NOT set */
   values: string[];
+  /**
+   * Cross-node comparison: ID of another flow node whose result to compare against.
+   * When set, `values` is ignored and `sourceColumn` is used instead.
+   */
+  sourceNodeId?: string;
+  /** Column from the source node's first result row to compare against */
+  sourceColumn?: string;
 }
 
 /**
