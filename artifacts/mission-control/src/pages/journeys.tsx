@@ -616,36 +616,29 @@ function JourneyFlowCanvas({
                 </div>
               )}
 
-              {/* Result rows preview */}
-              {selectedResult?.rows && selectedResult.rows.length > 0 && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Result Preview ({selectedResult.rows.length} of {selectedResult.rowCount})
-                  </div>
-                  <div className="rounded border border-border/40 overflow-auto max-h-48">
-                    {Object.keys(selectedResult.rows[0]).map(col => (
-                      <div key={col} className="border-b border-border/20 last:border-0">
-                        <div className="px-2 py-1 bg-black/30">
-                          <div className="text-[9px] text-muted-foreground font-mono uppercase">{col}</div>
-                          {selectedResult.rows!.slice(0, 3).map((row, i) => (
-                            <div key={i} className="text-[11px] text-white font-mono truncate">{row[col] ?? "—"}</div>
-                          ))}
+              {/* Pass Condition */}
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Pass Condition</div>
+                {isColumnValidation(selectedNode.validation) ? (() => {
+                  const norm = normalizeColumnValidation(selectedNode.validation);
+                  return (
+                    <div className="space-y-1.5">
+                      {norm.checks.map((chk, i) => (
+                        <div key={i} className="space-y-0.5">
+                          {i > 0 && <div className="text-[9px] text-amber-400/70 font-semibold uppercase tracking-wider">AND</div>}
+                          <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
+                            {chk.column} {chk.operator === "==" ? "=" : chk.operator === "!=" ? "≠" : "IN"} [{chk.values.join(", ")}]
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  );
+                })() : (
+                  <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
+                    {selectedNode.validation}
                   </div>
-                </div>
-              )}
-
-              {/* SQL */}
-              {selectedNode.sql && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">SQL Query</div>
-                  <pre className="text-[10px] font-mono text-primary/80 bg-black/50 p-2 rounded border border-border/40 overflow-x-auto whitespace-pre-wrap break-all">
-                    {substituteVars(selectedNode.sql, selectedRow, accountCol)}
-                  </pre>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         )}
