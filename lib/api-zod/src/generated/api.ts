@@ -8,6 +8,42 @@
 import * as zod from "zod";
 
 /**
+ * @summary Log in with email and password
+ */
+
+export const LoginBody = zod.object({
+  email: zod.string().email(),
+  password: zod.string().min(1),
+});
+
+export const LoginResponse = zod.object({
+  id: zod.number(),
+  email: zod.string(),
+  name: zod.string().nullish(),
+  avatarUrl: zod.string().nullish(),
+  role: zod.enum(["superadmin", "admin", "operator", "viewer"]),
+  tenantId: zod.number(),
+  isActive: zod.boolean().optional(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Get current session user
+ */
+export const GetAuthMeResponse = zod.object({
+  id: zod.number(),
+  email: zod.string(),
+  name: zod.string().nullish(),
+  avatarUrl: zod.string().nullish(),
+  role: zod.enum(["superadmin", "admin", "operator", "viewer"]),
+  tenantId: zod.number(),
+  isActive: zod.boolean().optional(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -99,7 +135,6 @@ export const ListUsersQueryParams = zod.object({
 
 export const ListUsersResponseItem = zod.object({
   id: zod.number(),
-  clerkId: zod.string(),
   email: zod.string(),
   name: zod.string().nullish(),
   avatarUrl: zod.string().nullish(),
@@ -114,9 +149,11 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem);
 /**
  * @summary Create/register a user profile
  */
+export const createUserBodyPasswordMin = 8;
+
 export const CreateUserBody = zod.object({
-  clerkId: zod.string(),
   email: zod.string(),
+  password: zod.string().min(createUserBodyPasswordMin),
   name: zod.string().optional(),
   avatarUrl: zod.string().optional(),
   role: zod.enum(["superadmin", "admin", "operator", "viewer"]).optional(),
@@ -128,7 +165,6 @@ export const CreateUserBody = zod.object({
  */
 export const GetCurrentUserResponse = zod.object({
   id: zod.number(),
-  clerkId: zod.string(),
   email: zod.string(),
   name: zod.string().nullish(),
   avatarUrl: zod.string().nullish(),
@@ -148,7 +184,6 @@ export const GetUserParams = zod.object({
 
 export const GetUserResponse = zod.object({
   id: zod.number(),
-  clerkId: zod.string(),
   email: zod.string(),
   name: zod.string().nullish(),
   avatarUrl: zod.string().nullish(),
@@ -175,7 +210,6 @@ export const UpdateUserBody = zod.object({
 
 export const UpdateUserResponse = zod.object({
   id: zod.number(),
-  clerkId: zod.string(),
   email: zod.string(),
   name: zod.string().nullish(),
   avatarUrl: zod.string().nullish(),

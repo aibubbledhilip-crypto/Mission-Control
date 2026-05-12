@@ -1,5 +1,5 @@
-import { useClerk, useUser } from "@clerk/react";
 import { Bell, LogOut } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import { useGetSystemHealth } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,20 +11,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 
 export default function Header() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  
-  // Try to load system health, if tenant is required we might skip or use tenant id. 
-  // For demo, we just call it (API allows it if valid or returns default)
+  const { user, logout } = useAuth();
   const { data: health } = useGetSystemHealth();
+
+  const initials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+    : user?.email?.[0]?.toUpperCase() ?? "U";
 
   return (
     <header className="flex h-16 items-center justify-between px-6 bg-[#080c14]/80 backdrop-blur-md border-b border-border z-10">
       <div className="flex items-center gap-4">
-        {/* System Health Indicator */}
         <div className="flex items-center gap-2 bg-black/40 border border-border px-3 py-1.5 rounded-full">
           <div className="relative flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -49,9 +47,9 @@ export default function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full">
               <Avatar className="h-8 w-8 border border-border">
-                <AvatarImage src={user?.imageUrl} alt={user?.fullName || ""} />
-                <AvatarFallback className="bg-primary/20 text-primary">
-                  {user?.firstName?.charAt(0) || "U"}
+                <AvatarImage src={user?.avatarUrl ?? undefined} alt={user?.name ?? ""} />
+                <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
+                  {initials}
                 </AvatarFallback>
               </Avatar>
             </Button>
@@ -59,14 +57,15 @@ export default function Header() {
           <DropdownMenuContent className="w-56" align="end" forceMount>
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none text-white">{user?.fullName}</p>
-                <p className="text-xs leading-none text-muted-foreground">
-                  {user?.primaryEmailAddress?.emailAddress}
-                </p>
+                <p className="text-sm font-medium leading-none text-white">{user?.name ?? "User"}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-400 focus:bg-red-400/10 focus:text-red-400 cursor-pointer" onClick={() => signOut()}>
+            <DropdownMenuItem
+              className="text-red-400 focus:bg-red-400/10 focus:text-red-400 cursor-pointer"
+              onClick={() => logout()}
+            >
               <LogOut className="mr-2 h-4 w-4" />
               <span>Log out</span>
             </DropdownMenuItem>

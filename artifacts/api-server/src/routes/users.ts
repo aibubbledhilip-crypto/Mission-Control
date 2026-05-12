@@ -1,9 +1,8 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db, usersTable, tenantsTable } from "@workspace/db";
-import { getAuth, clerkClient } from "@clerk/express";
 import {
-  CreateUserBody,
   UpdateUserBody,
   UpdateUserParams,
   GetUserParams,
@@ -14,8 +13,18 @@ import {
   UpdateUserResponse,
   GetCurrentUserResponse,
 } from "@workspace/api-zod";
+import { z } from "zod";
 
 const router: IRouter = Router();
+
+const CreateUserBody = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  name: z.string().optional(),
+  avatarUrl: z.string().optional(),
+  role: z.enum(["superadmin", "admin", "operator", "viewer"]).optional(),
+  tenantId: z.number().int(),
+});
 
 router.get("/users", async (req, res): Promise<void> => {
   const query = ListUsersQueryParams.safeParse(req.query);
@@ -28,49 +37,19 @@ router.get("/users", async (req, res): Promise<void> => {
 });
 
 router.get("/users/me", async (req, res): Promise<void> => {
-  const auth = getAuth(req);
-  const clerkId = auth?.userId;
-  if (!clerkId) { res.status(401).json({ error: "Unauthorized" }); return; }
-
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.clerkId, clerkId));
-  if (existing) { res.json(GetCurrentUserResponse.parse(existing)); return; }
-
-  // Auto-provision: fetch details from Clerk then create tenant + user
-  const clerkUser = await clerkClient.users.getUser(clerkId);
-  const email = clerkUser.emailAddresses[0]?.emailAddress ?? `${clerkId}@unknown.local`;
-  const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || null;
-  const avatarUrl = clerkUser.imageUrl ?? null;
-
-  // Derive a unique tenant slug from the email domain or clerkId
-  const domain = email.split("@")[1]?.replace(/\./g, "-") ?? clerkId.slice(0, 12);
-  const baseSlug = domain.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  const slug = `${baseSlug}-${Date.now().toString(36)}`;
-
-  const [tenant] = await db.insert(tenantsTable).values({
-    name: name ?? email,
-    slug,
-    plan: "starter",
-  }).returning();
-
-  const [user] = await db.insert(usersTable).values({
-    clerkId,
-    email,
-    name,
-    avatarUrl,
-    role: "admin",
-    tenantId: tenant.id,
-  }).returning();
-
-  req.log.info({ userId: user.id, tenantId: tenant.id }, "Auto-provisioned user and tenant");
+  if (!req.session?.userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json(GetCurrentUserResponse.parse(user));
 });
 
 router.post("/users", async (req, res): Promise<void> => {
   const parsed = CreateUserBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
   const [user] = await db.insert(usersTable).values({
-    clerkId: parsed.data.clerkId,
-    email: parsed.data.email,
+    email: parsed.data.email.toLowerCase(),
+    passwordHash,
     name: parsed.data.name ?? null,
     avatarUrl: parsed.data.avatarUrl ?? null,
     role: parsed.data.role ?? "operator",

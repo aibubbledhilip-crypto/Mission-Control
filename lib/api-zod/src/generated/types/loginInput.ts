@@ -5,14 +5,9 @@
  * Mission Control Customer Journey Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { UserInputRole } from "./userInputRole";
 
-export interface UserInput {
+export interface LoginInput {
   email: string;
-  /** @minLength 8 */
+  /** @minLength 1 */
   password: string;
-  name?: string;
-  avatarUrl?: string;
-  role?: UserInputRole;
-  tenantId: number;
 }

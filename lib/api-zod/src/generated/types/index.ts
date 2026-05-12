@@ -64,6 +64,7 @@ export * from "./listDataSourcesParams";
 export * from "./listJourneyNodesParams";
 export * from "./listJourneysParams";
 export * from "./listUsersParams";
+export * from "./loginInput";
 export * from "./serviceHealth";
 export * from "./serviceHealthStatus";
 export * from "./statusCount";

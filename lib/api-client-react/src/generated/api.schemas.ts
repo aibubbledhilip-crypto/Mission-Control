@@ -73,6 +73,12 @@ export interface TenantUpdate {
   settings?: TenantUpdateSettings;
 }
 
+export interface LoginInput {
+  email: string;
+  /** @minLength 1 */
+  password: string;
+}
+
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const UserRole = {
@@ -84,7 +90,6 @@ export const UserRole = {
 
 export interface User {
   id: number;
-  clerkId: string;
   email: string;
   /** @nullable */
   name?: string | null;
@@ -107,8 +112,9 @@ export const UserInputRole = {
 } as const;
 
 export interface UserInput {
-  clerkId: string;
   email: string;
+  /** @minLength 8 */
+  password: string;
   name?: string;
   avatarUrl?: string;
   role?: UserInputRole;

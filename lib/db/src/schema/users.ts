@@ -5,8 +5,8 @@ import { tenantsTable } from "./tenants";
 
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
-  clerkId: text("clerk_id").notNull().unique(),
-  email: text("email").notNull(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
   name: text("name"),
   avatarUrl: text("avatar_url"),
   role: text("role").notNull().default("operator"),
