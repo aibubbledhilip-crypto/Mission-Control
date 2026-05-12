@@ -25,7 +25,7 @@ import {
 import {
   Search, Route, Activity, ChevronLeft, ChevronRight, Pause, Play,
   X, Database, Clock, RefreshCw, ZoomIn, ZoomOut, Loader2,
-  CheckCircle2, XCircle, GitBranch, SlidersHorizontal,
+  CheckCircle2, XCircle, AlertCircle, GitBranch, SlidersHorizontal,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -46,7 +46,7 @@ import type { Journey } from "@workspace/api-client-react";
 
 // ─── Node Result Types ────────────────────────────────────────────────────────
 
-type NodeStatus = "idle" | "loading" | "pass" | "fail" | "error";
+type NodeStatus = "idle" | "loading" | "pass" | "fail" | "warn" | "error";
 
 interface NodeResult {
   status: NodeStatus;
@@ -65,7 +65,7 @@ function evaluateValidation(
   validation: NodeValidation,
   rowCount: number,
   rows: Record<string, string>[]
-): { passed: boolean; checkedColumn?: string; checkedValue?: string } {
+): { passed: boolean; noData?: boolean; checkedColumn?: string; checkedValue?: string } {
   if (typeof validation === "string") {
     const passed = validation === "rowCount > 0" ? rowCount > 0 : rowCount === 0;
     return { passed };
@@ -73,7 +73,8 @@ function evaluateValidation(
   if (isColumnValidation(validation)) {
     const norm = normalizeColumnValidation(validation);
     if (norm.checks.length === 0) return { passed: false };
-    if (rows.length === 0) return { passed: false };
+    // Zero rows on a column check = no data to evaluate → warn, not definitive fail
+    if (rows.length === 0) return { passed: false, noData: true };
     // ALL checks must pass (AND logic)
     for (const chk of norm.checks) {
       const actualVal = rows[0][chk.column] ?? "";
@@ -117,17 +118,19 @@ function CanvasNode({
   const ringColor =
     status === "pass"    ? "#10b981" :
     status === "fail"    ? "#ef4444" :
+    status === "warn"    ? "#f59e0b" :
     status === "loading" ? "#0ea5e9" :
     status === "error"   ? "#f59e0b" :
                            "#475569";
 
   const glowSize =
-    status === "pass" || status === "fail" ? "0 0 28px 4px" :
-    status === "loading"                   ? "0 0 16px 2px" : "0 0 0 0";
+    status === "pass" || status === "fail" || status === "warn" ? "0 0 28px 4px" :
+    status === "loading"                                         ? "0 0 16px 2px" : "0 0 0 0";
 
   const iconColor =
     status === "pass"    ? "#10b981" :
     status === "fail"    ? "#ef4444" :
+    status === "warn"    ? "#f59e0b" :
     status === "loading" ? "#0ea5e9" :
     status === "error"   ? "#f59e0b" :
                            "#64748b";
@@ -154,13 +157,13 @@ function CanvasNode({
       <div className="text-center mt-2 px-1">
         <div
           className="text-[11px] font-bold tracking-wider uppercase truncate"
-          style={{ color: status === "pass" ? "#10b981" : status === "fail" ? "#ef4444" : "#94a3b8" }}
+          style={{ color: status === "pass" ? "#10b981" : status === "fail" ? "#ef4444" : status === "warn" ? "#f59e0b" : "#94a3b8" }}
         >
           {node.name}
         </div>
         {status !== "idle" && (
           <div className="text-[10px] font-semibold mt-0.5" style={{ color: ringColor }}>
-            {status === "loading" ? "···" : status === "pass" ? "PASS" : status === "fail" ? "FAIL" : "ERR"}
+            {status === "loading" ? "···" : status === "pass" ? "PASS" : status === "fail" ? "FAIL" : status === "warn" ? "NO DATA" : "ERR"}
           </div>
         )}
         {(status === "pass" || status === "fail") && result?.rowCount !== undefined && (
@@ -269,8 +272,9 @@ function JourneyFlowCanvas({
         const result = await resp.json();
         const rowCount: number = result.rowCount ?? 0;
         const rows: Record<string, string>[] = result.rows?.slice(0, 5) ?? [];
-        const { passed, checkedColumn, checkedValue } = evaluateValidation(node.validation, rowCount, rows);
-        setNodeResults(r => ({ ...r, [node.id]: { status: passed ? "pass" : "fail", rowCount, rows, checkedColumn, checkedValue } }));
+        const { passed, noData, checkedColumn, checkedValue } = evaluateValidation(node.validation, rowCount, rows);
+        const status: NodeStatus = passed ? "pass" : noData ? "warn" : "fail";
+        setNodeResults(r => ({ ...r, [node.id]: { status, rowCount, rows, checkedColumn, checkedValue } }));
       } catch (err: any) {
         if (runRef.current !== runId) return;
         setNodeResults(r => ({ ...r, [node.id]: { status: "error", error: err?.message ?? "Network error" } }));
@@ -573,6 +577,10 @@ function JourneyFlowCanvas({
                       <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 gap-1">
                         <XCircle className="w-3 h-3" /> FAIL
                       </Badge>
+                    ) : selectedResult.status === "warn" ? (
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1">
+                        <AlertCircle className="w-3 h-3" /> NO DATA
+                      </Badge>
                     ) : selectedResult.status === "error" ? (
                       <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1">
                         ERROR
@@ -634,7 +642,14 @@ function JourneyFlowCanvas({
                             <div className="text-xs font-mono text-primary bg-primary/10 rounded px-2 py-1 border border-primary/20 inline-block">
                               {chk.column} {chk.operator === "==" ? "=" : chk.operator === "!=" ? "≠" : "IN"} [{chk.values.join(", ")}]
                             </div>
-                            {actualVal && (
+                            {selectedResult?.rowCount === 0 ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-muted-foreground">Actual:</span>
+                                <span className="text-xs font-mono px-2 py-0.5 rounded border text-amber-400 bg-amber-500/10 border-amber-500/20">
+                                  no rows returned
+                                </span>
+                              </div>
+                            ) : actualVal ? (
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] text-muted-foreground">Actual:</span>
                                 <span className={cn(
@@ -646,7 +661,7 @@ function JourneyFlowCanvas({
                                   {actualVal}
                                 </span>
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         );
                       })}
