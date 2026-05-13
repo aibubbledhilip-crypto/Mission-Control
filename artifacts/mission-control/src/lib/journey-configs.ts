@@ -112,6 +112,11 @@ export interface JourneyConfig {
   flowConditions?: FlowCondition[];
   /** Legacy: flat list of flow nodes (used when no flowConditions defined) */
   flowNodes?: FlowNode[];
+  /**
+   * Columns from rawColumns that operators can use as filters on the Journeys page.
+   * Configured in the Configuration page per group.
+   */
+  filterColumns?: string[];
 }
 
 function uuid(): string {

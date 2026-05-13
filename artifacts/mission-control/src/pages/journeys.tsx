@@ -25,8 +25,15 @@ import {
 import {
   Search, Route, Activity, ChevronLeft, ChevronRight, Pause, Play,
   X, Database, Clock, RefreshCw, ZoomIn, ZoomOut, Loader2,
-  CheckCircle2, XCircle, AlertCircle, GitBranch, SlidersHorizontal,
+  CheckCircle2, XCircle, AlertCircle, GitBranch, SlidersHorizontal, Filter,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -1025,9 +1032,15 @@ function SqlRowItem({ row, columns, color, selected, onClick }: { row: Record<st
   );
 }
 
-function SqlGroupSection({ config, selected, onSelect, searchFilter }: { config: JourneyConfig; selected: SelectedItem | null; onSelect: (item: SelectedItem) => void; searchFilter: string }) {
+function SqlGroupSection({ config, selected, onSelect, searchFilter, columnFilters }: { config: JourneyConfig; selected: SelectedItem | null; onSelect: (item: SelectedItem) => void; searchFilter: string; columnFilters: Record<string, string> }) {
   const [collapsed, setCollapsed] = useState(false);
-  const rows = (config.rawRows ?? []).filter(row => !searchFilter || Object.values(row).some(v => v?.toLowerCase().includes(searchFilter.toLowerCase())));
+  const rows = (config.rawRows ?? []).filter(row => {
+    if (searchFilter && !Object.values(row).some(v => v?.toLowerCase().includes(searchFilter.toLowerCase()))) return false;
+    for (const [col, val] of Object.entries(columnFilters)) {
+      if (val && (row[col] ?? "").toLowerCase() !== val.toLowerCase()) return false;
+    }
+    return true;
+  });
   const columns = config.rawColumns ?? [];
   if (rows.length === 0 && !config.rawRows?.length) return null;
 
@@ -1082,6 +1095,8 @@ export default function Journeys() {
   const [selected, setSelected] = useState<SelectedItem | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
   const [configs, setConfigs] = useState<JourneyConfig[]>(() => loadJourneyConfigs());
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     const onFocus = () => setConfigs(loadJourneyConfigs());
@@ -1096,6 +1111,32 @@ export default function Journeys() {
 
   const sqlConfigs = configs.filter(c => c.enabled && c.type === "sql" && (c.rawRows?.length ?? 0) > 0);
   const manualConfigs = configs.filter(c => c.enabled && c.type === "manual" && c.accountIds.length > 0);
+
+  // Collect all filter columns configured across active SQL groups (deduplicated)
+  const allFilterColumns = Array.from(new Set(sqlConfigs.flatMap(c => c.filterColumns ?? [])));
+
+  // Distinct values per filter column across all SQL configs' rows
+  const filterOptions: Record<string, string[]> = {};
+  for (const col of allFilterColumns) {
+    const seen = new Set<string>();
+    for (const cfg of sqlConfigs) {
+      for (const row of cfg.rawRows ?? []) {
+        const v = row[col];
+        if (v !== undefined && v !== "" && v !== null) seen.add(String(v));
+      }
+    }
+    filterOptions[col] = Array.from(seen).sort();
+  }
+
+  const activeFilterCount = Object.values(columnFilters).filter(Boolean).length;
+
+  function setFilter(col: string, val: string) {
+    setColumnFilters(prev => ({ ...prev, [col]: val }));
+  }
+
+  function clearAllFilters() {
+    setColumnFilters({});
+  }
 
   const dbGroups: { config: JourneyConfig | null; journeys: Journey[] }[] = [];
   const assignedIds = new Set<number>();
@@ -1141,16 +1182,83 @@ export default function Journeys() {
             <RefreshCw className="w-3 h-3" />
           </Button>
         </div>
-        <div className="px-3 py-2 border-b border-border/50 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 bg-black/40 border-border text-white text-xs" />
+        <div className="px-3 py-2 border-b border-border/50 shrink-0 space-y-2">
+          {/* Search */}
+          <div className="flex gap-1.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 bg-black/40 border-border text-white text-xs" />
+            </div>
+            {allFilterColumns.length > 0 && (
+              <button
+                onClick={() => setFiltersOpen(o => !o)}
+                className={cn(
+                  "relative flex items-center justify-center w-8 h-8 rounded-md border text-xs transition-all shrink-0",
+                  filtersOpen || activeFilterCount > 0
+                    ? "bg-primary/15 border-primary/40 text-primary"
+                    : "border-border text-muted-foreground hover:text-white hover:border-border/80 bg-black/40"
+                )}
+                title="Toggle filters"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary text-[9px] font-bold text-white flex items-center justify-center leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
+
+          {/* Filter dropdowns */}
+          {filtersOpen && allFilterColumns.length > 0 && (
+            <div className="space-y-1.5">
+              {allFilterColumns.map(col => (
+                <div key={col} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground font-mono shrink-0 w-20 truncate" title={col}>{col}</span>
+                  <Select
+                    value={columnFilters[col] || "__all__"}
+                    onValueChange={v => setFilter(col, v === "__all__" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-7 flex-1 bg-black/50 border-border text-white text-[11px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="__all__" className="text-[11px] text-muted-foreground">All</SelectItem>
+                      {(filterOptions[col] ?? []).map(v => (
+                        <SelectItem key={v} value={v} className="text-[11px] font-mono">{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearAllFilters}
+                  className="w-full text-[10px] text-muted-foreground hover:text-white py-1 border border-border/30 rounded-md hover:bg-white/5 transition-colors flex items-center justify-center gap-1"
+                >
+                  <X className="w-3 h-3" /> Clear all filters
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Active filter pills (when panel closed) */}
+          {!filtersOpen && activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(columnFilters).filter(([, v]) => v).map(([col, val]) => (
+                <span key={col} className="inline-flex items-center gap-1 bg-primary/10 border border-primary/25 text-primary rounded px-1.5 py-0.5 text-[9px] font-mono">
+                  {col}={val}
+                  <button onClick={() => setFilter(col, "")} className="hover:text-red-400"><X className="w-2.5 h-2.5" /></button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto py-1">
           {sqlConfigs.map(cfg => (
-            <SqlGroupSection key={cfg.id} config={cfg} selected={selected} onSelect={setSelected} searchFilter={search} />
+            <SqlGroupSection key={cfg.id} config={cfg} selected={selected} onSelect={setSelected} searchFilter={search} columnFilters={columnFilters} />
           ))}
           {dbLoading && dbGroups.length === 0
             ? Array(4).fill(0).map((_, i) => <div key={i} className="px-3 py-1.5"><Skeleton className="h-14 w-full bg-card/50 rounded-lg" /></div>)

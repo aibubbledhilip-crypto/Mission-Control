@@ -1009,6 +1009,48 @@ function ConfigCard({
                   </table>
                 </div>
               )}
+
+              {/* Filter Columns */}
+              {(config.rawColumns ?? []).length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Filter Columns</Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      {(config.filterColumns ?? []).length} selected
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground -mt-1">
+                    Choose which columns appear as filter dropdowns on the Journeys page.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(config.rawColumns ?? []).map(col => {
+                      const active = (config.filterColumns ?? []).includes(col);
+                      return (
+                        <button
+                          key={col}
+                          onClick={() => {
+                            const current = config.filterColumns ?? [];
+                            onChange({
+                              ...config,
+                              filterColumns: active
+                                ? current.filter(c => c !== col)
+                                : [...current, col],
+                            });
+                          }}
+                          className={cn(
+                            "px-2 py-1 rounded-md border text-[10px] font-mono transition-all",
+                            active
+                              ? "bg-primary/15 border-primary/40 text-primary"
+                              : "border-border/40 text-muted-foreground hover:border-border hover:text-white bg-black/20"
+                          )}
+                        >
+                          {col}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
