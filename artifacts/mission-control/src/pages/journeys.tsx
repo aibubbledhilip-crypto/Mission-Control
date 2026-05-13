@@ -417,40 +417,35 @@ function JourneyFlowCanvas({
       }
     }
 
-    // Pass B: clear stale propagation flags so we recompute from scratch
-    for (const node of flowNodes) {
-      if (updated[node.id]?.propagated) {
-        updated[node.id] = { ...updated[node.id], status: "pass", propagated: false };
-        changed = true;
-      }
-    }
-
-    // Pass C: propagate failures/warnings up the parent chain
-    // Build child → parent map
+    // Pass B: idempotent parent propagation
+    // Compute which ancestor IDs need a propagated-warn from direct failing children.
+    // Only change nodes whose current state differs from the desired state so this
+    // pass is a no-op on the second invocation → breaks the oscillation loop.
     const parentOf: Record<string, string> = {};
     for (const n of flowNodes) {
       if (n.parentNodeId) parentOf[n.id] = n.parentNodeId;
     }
-    // Collect ancestor IDs for every node that directly has an issue
-    const propagatedIds = new Set<string>();
+    const shouldPropagate = new Set<string>();
     for (const node of flowNodes) {
       const st = updated[node.id]?.status ?? "idle";
       if ((st === "fail" || st === "warn" || st === "error") && !updated[node.id]?.propagated) {
         let pid = parentOf[node.id];
-        while (pid) {
-          propagatedIds.add(pid);
-          pid = parentOf[pid];
-        }
+        while (pid) { shouldPropagate.add(pid); pid = parentOf[pid]; }
       }
     }
-    for (const nodeId of propagatedIds) {
-      const curr = updated[nodeId];
-      const currSt = curr?.status ?? "idle";
-      // Only mark if the ancestor doesn't already have a direct failure
-      if (currSt !== "fail" && currSt !== "error") {
-        updated[nodeId] = { ...(curr ?? { status: "idle" }), status: "warn", propagated: true };
+    for (const node of flowNodes) {
+      const curr = updated[node.id];
+      const needs = shouldPropagate.has(node.id);
+      if (needs && !curr?.propagated && curr?.status !== "fail" && curr?.status !== "error") {
+        // Ancestor needs a propagated indicator — add it
+        updated[node.id] = { ...(curr ?? { status: "idle" }), status: "warn", propagated: true };
+        changed = true;
+      } else if (!needs && curr?.propagated) {
+        // Child failure resolved — remove the propagated indicator
+        updated[node.id] = { ...curr, status: "pass", propagated: false };
         changed = true;
       }
+      // Already in the correct state → no change → effect converges after ≤ 2 runs
     }
 
     if (changed) setNodeResults(updated);
@@ -1320,30 +1315,25 @@ export default function Journeys() {
     async function runBackground() {
       for (const cfg of configsToEval) {
         const rows = cfg.rawRows ?? [];
-        // Process 3 rows concurrently to avoid overwhelming the data source
-        for (let i = 0; i < rows.length; i += 3) {
+        // Process one row at a time — each query already takes 2–5 s, so serial
+        // execution avoids overwhelming the data source connection pool.
+        for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
           if (controller.signal.aborted) return;
-          const batch = rows.slice(i, i + 3);
-          await Promise.all(
-            batch.map(async (row, bi) => {
-              const rowIndex = i + bi;
-              try {
-                const health = await evaluateRowHealth(cfg, row, controller.signal);
-                if (!controller.signal.aborted) {
-                  setRowHealthCache(prev => {
-                    const key = `${cfg.id}:${rowIndex}`;
-                    return prev[key] === health ? prev : { ...prev, [key]: health };
-                  });
-                }
-              } catch {
-                // Ignore individual row errors — they'll stay uncached
-              } finally {
-                if (!controller.signal.aborted) {
-                  setBgEvalPending(p => Math.max(0, p - 1));
-                }
-              }
-            }),
-          );
+          try {
+            const health = await evaluateRowHealth(cfg, rows[rowIndex], controller.signal);
+            if (!controller.signal.aborted) {
+              setRowHealthCache(prev => {
+                const key = `${cfg.id}:${rowIndex}`;
+                return prev[key] === health ? prev : { ...prev, [key]: health };
+              });
+            }
+          } catch {
+            // Ignore individual row errors — they stay uncached
+          } finally {
+            if (!controller.signal.aborted) {
+              setBgEvalPending(p => Math.max(0, p - 1));
+            }
+          }
         }
       }
       setBgEvalPending(0);
@@ -1359,7 +1349,7 @@ export default function Journeys() {
   useEffect(() => {
     const onFocus = () => setConfigs(loadJourneyConfigs());
     window.addEventListener("focus", onFocus);
-    const iv = setInterval(() => setConfigs(loadJourneyConfigs()), 2000);
+    const iv = setInterval(() => setConfigs(loadJourneyConfigs()), 30000);
     return () => { window.removeEventListener("focus", onFocus); clearInterval(iv); };
   }, []);
 
