@@ -109,6 +109,79 @@ function evaluateValidation(
   return { passed: false };
 }
 
+// ─── Background Row Health Evaluator ─────────────────────────────────────────
+// Runs all node queries for a single row and returns the overall health status.
+// Used by the background eager-evaluation pass so the list shows issue badges
+// before the user has to click into each row.
+
+async function evaluateRowHealth(
+  config: JourneyConfig,
+  row: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<NodeStatus> {
+  const accountCol = config.accountColumn ?? "bancan";
+  const { nodes: flowNodes } = resolveActiveNodes(config, row);
+  if (flowNodes.length === 0) return "idle";
+
+  const nodeResults: Record<string, NodeResult> = {};
+
+  // Run all node queries in parallel
+  await Promise.all(flowNodes.map(async (node) => {
+    if (!node.sql?.trim()) {
+      nodeResults[node.id] = { status: "idle" };
+      return;
+    }
+    const dsId = node.dataSourceId ?? config.dataSourceId;
+    if (!dsId) {
+      nodeResults[node.id] = { status: "error", error: "No data source" };
+      return;
+    }
+    const sql = substituteVars(node.sql, row, accountCol);
+    try {
+      const resp = await fetch(`/api/data-sources/${dsId}/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ sql }),
+        signal,
+      });
+      if (signal?.aborted) return;
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+        nodeResults[node.id] = { status: "error", error: err.error ?? "Query failed" };
+        return;
+      }
+      const result = await resp.json();
+      const rowCount: number = result.rowCount ?? 0;
+      const rows: Record<string, string>[] = result.rows?.slice(0, 5) ?? [];
+      const { passed, noData } = evaluateValidation(node.validation, rowCount, rows, {});
+      nodeResults[node.id] = { status: passed ? "pass" : noData ? "warn" : "fail", rowCount, rows };
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      nodeResults[node.id] = { status: "error", error: err?.message ?? "Network error" };
+    }
+  }));
+
+  if (signal?.aborted) return "idle";
+
+  // Cross-node second pass
+  for (const node of flowNodes) {
+    if (!isColumnValidation(node.validation)) continue;
+    const norm = normalizeColumnValidation(node.validation);
+    if (!norm.checks.some(c => c.sourceNodeId)) continue;
+    const result = nodeResults[node.id];
+    if (!result?.rows) continue;
+    const { passed, noData } = evaluateValidation(node.validation, result.rowCount ?? 0, result.rows, nodeResults);
+    nodeResults[node.id] = { ...result, status: passed ? "pass" : noData ? "warn" : "fail" };
+  }
+
+  // Return worst direct (non-propagated) status
+  const statuses = Object.values(nodeResults).map(r => r.status);
+  return statuses.some(s => s === "fail")  ? "fail"  :
+         statuses.some(s => s === "error") ? "error" :
+         statuses.some(s => s === "warn")  ? "warn"  : "pass";
+}
+
 // ─── SQL Substitution ─────────────────────────────────────────────────────────
 
 function substituteVars(sql: string, row: Record<string, string>, accountCol: string): string {
@@ -1213,11 +1286,75 @@ export default function Journeys() {
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [rowHealthCache, setRowHealthCache] = useState<Record<string, NodeStatus>>({});
+  const [bgEvalPending, setBgEvalPending] = useState(0); // count of rows still being evaluated
 
   function handleRowHealthChange(configId: string, rowIndex: number, health: NodeStatus) {
     const key = `${configId}:${rowIndex}`;
     setRowHealthCache(prev => prev[key] === health ? prev : { ...prev, [key]: health });
   }
+
+  // ── Eager background health evaluation ───────────────────────────────────────
+  // Whenever SQL data changes (new "Run & Apply"), evaluate ALL rows upfront so
+  // issue badges appear in the list without clicking each row first.
+  // Keyed on lastRunAt + row count per config so re-runs only when data changes.
+  const bgEvalKey = configs
+    .filter(c => c.enabled && c.type === "sql" && ((c.flowConditions?.length ?? 0) > 0 || (c.flowNodes?.length ?? 0) > 0))
+    .map(c => `${c.id}:${c.lastRunAt ?? ""}:${c.rawRows?.length ?? 0}`)
+    .join("|");
+
+  useEffect(() => {
+    if (!bgEvalKey) return;
+    const controller = new AbortController();
+    const configsToEval = configs.filter(
+      c => c.enabled && c.type === "sql" &&
+        ((c.flowConditions?.length ?? 0) > 0 || (c.flowNodes?.length ?? 0) > 0) &&
+        (c.rawRows?.length ?? 0) > 0,
+    );
+    if (configsToEval.length === 0) return;
+
+    const totalRows = configsToEval.reduce((s, c) => s + (c.rawRows?.length ?? 0), 0);
+    setBgEvalPending(totalRows);
+    // Clear stale cache for rows that no longer exist
+    setRowHealthCache({});
+
+    async function runBackground() {
+      for (const cfg of configsToEval) {
+        const rows = cfg.rawRows ?? [];
+        // Process 3 rows concurrently to avoid overwhelming the data source
+        for (let i = 0; i < rows.length; i += 3) {
+          if (controller.signal.aborted) return;
+          const batch = rows.slice(i, i + 3);
+          await Promise.all(
+            batch.map(async (row, bi) => {
+              const rowIndex = i + bi;
+              try {
+                const health = await evaluateRowHealth(cfg, row, controller.signal);
+                if (!controller.signal.aborted) {
+                  setRowHealthCache(prev => {
+                    const key = `${cfg.id}:${rowIndex}`;
+                    return prev[key] === health ? prev : { ...prev, [key]: health };
+                  });
+                }
+              } catch {
+                // Ignore individual row errors — they'll stay uncached
+              } finally {
+                if (!controller.signal.aborted) {
+                  setBgEvalPending(p => Math.max(0, p - 1));
+                }
+              }
+            }),
+          );
+        }
+      }
+      setBgEvalPending(0);
+    }
+
+    runBackground();
+    return () => {
+      controller.abort();
+      setBgEvalPending(0);
+    };
+  }, [bgEvalKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onFocus = () => setConfigs(loadJourneyConfigs());
@@ -1297,7 +1434,16 @@ export default function Journeys() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
           <div className="flex-1 min-w-0">
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Journeys</div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">{total} result{total !== 1 ? "s" : ""}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+              {bgEvalPending > 0 ? (
+                <>
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-primary/70" />
+                  <span className="text-primary/70">Scanning {bgEvalPending} remaining…</span>
+                </>
+              ) : (
+                <span>{total} result{total !== 1 ? "s" : ""}</span>
+              )}
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setConfigs(loadJourneyConfigs())} className="h-7 w-7 text-muted-foreground hover:text-white" title="Reload">
             <RefreshCw className="w-3 h-3" />
