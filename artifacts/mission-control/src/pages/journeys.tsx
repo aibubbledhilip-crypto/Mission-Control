@@ -1223,7 +1223,7 @@ export default function Journeys() {
                     <SelectTrigger className="h-7 flex-1 bg-black/50 border-border text-white text-[11px]">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
+                    <SelectContent className="bg-card border-border max-h-60 overflow-y-auto">
                       <SelectItem value="__all__" className="text-[11px] text-muted-foreground">All</SelectItem>
                       {(filterOptions[col] ?? []).map(v => (
                         <SelectItem key={v} value={v} className="text-[11px] font-mono">{v}</SelectItem>
