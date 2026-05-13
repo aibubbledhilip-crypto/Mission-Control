@@ -64,6 +64,8 @@ interface NodeResult {
   checkedColumn?: string;
   /** For columnValue validation: actual value from the first result row */
   checkedValue?: string;
+  /** True when this node's status was inherited upward from a failing child, not a direct failure */
+  propagated?: boolean;
 }
 
 // ─── Validation Evaluation ────────────────────────────────────────────────────
@@ -142,7 +144,11 @@ function CanvasNode({
     status === "error"   ? "#f59e0b" :
                            "#475569";
 
+  const propagated = result?.propagated ?? false;
+
+  // Propagated ancestors use a dimmer glow + dashed border to signal "child has issue"
   const glowSize =
+    propagated                                                   ? "0 0 14px 2px" :
     status === "pass" || status === "fail" || status === "warn" ? "0 0 28px 4px" :
     status === "loading"                                         ? "0 0 16px 2px" : "0 0 0 0";
 
@@ -154,6 +160,13 @@ function CanvasNode({
     status === "error"   ? "#f59e0b" :
                            "#64748b";
 
+  const statusLabel =
+    propagated           ? "↓ ISSUE" :
+    status === "loading" ? "···"     :
+    status === "pass"    ? "PASS"    :
+    status === "fail"    ? "FAIL"    :
+    status === "warn"    ? "NO DATA" : "ERR";
+
   return (
     <div style={{ width: NODE_SIZE + 40, marginLeft: -20, userSelect: "none" }}>
       <div
@@ -162,10 +175,11 @@ function CanvasNode({
           width: NODE_SIZE,
           height: NODE_SIZE,
           borderRadius: "50%",
-          border: `3px solid ${ringColor}`,
+          border: `${propagated ? "2px dashed" : "3px solid"} ${ringColor}`,
           boxShadow: `${glowSize} ${ringColor}${selected ? ", 0 0 0 5px rgba(255,255,255,0.18)" : ""}`,
           background: "radial-gradient(circle at 35% 35%, #1a2744, #0a0f18)",
-          transition: "box-shadow 0.3s, border-color 0.3s",
+          opacity: propagated ? 0.75 : 1,
+          transition: "box-shadow 0.3s, border-color 0.3s, opacity 0.3s",
           animation: status === "loading" ? "pulse 1.5s infinite" : undefined,
         }}
       >
@@ -181,11 +195,11 @@ function CanvasNode({
           {node.name}
         </div>
         {status !== "idle" && (
-          <div className="text-[10px] font-semibold mt-0.5" style={{ color: ringColor }}>
-            {status === "loading" ? "···" : status === "pass" ? "PASS" : status === "fail" ? "FAIL" : status === "warn" ? "NO DATA" : "ERR"}
+          <div className="text-[10px] font-semibold mt-0.5" style={{ color: propagated ? "#f59e0b99" : ringColor }}>
+            {statusLabel}
           </div>
         )}
-        {(status === "pass" || status === "fail") && result?.rowCount !== undefined && (
+        {(status === "pass" || status === "fail") && !propagated && result?.rowCount !== undefined && (
           <div className="text-[9px] text-muted-foreground mt-0.5">
             {result.rowCount} row{result.rowCount !== 1 ? "s" : ""}
           </div>
@@ -201,10 +215,12 @@ function JourneyFlowCanvas({
   config,
   selectedRow,
   onClose,
+  onHealthChange,
 }: {
   config: JourneyConfig;
   selectedRow: Record<string, string>;
   onClose: () => void;
+  onHealthChange?: (health: NodeStatus) => void;
 }) {
   // ── Transform state (also mirrored in refs for zero-stale-closure window handlers) ──
   const [zoom, setZoom] = useState(1.0);
@@ -302,12 +318,18 @@ function JourneyFlowCanvas({
     });
   }, [bancan, config.id, conditionKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Cross-node validation second pass: re-evaluate once all nodes have results ──
+  // ── Cross-node validation second pass + parent propagation ──────────────────
+  // Runs once all nodes have settled (no loading). Does two things:
+  //   1. Re-evaluate cross-node column checks now that all sibling results exist.
+  //   2. Walk each failing/warning node's parent chain and mark ancestors with a
+  //      propagated-warn so operators can see issues bubble up to root nodes.
   useEffect(() => {
     const statuses = Object.values(nodeResults).map(r => r.status);
     if (statuses.length === 0 || statuses.some(s => s === "loading")) return;
     let changed = false;
     const updated = { ...nodeResults };
+
+    // Pass A: cross-node re-evaluation
     for (const node of flowNodes) {
       if (!isColumnValidation(node.validation)) continue;
       const norm = normalizeColumnValidation(node.validation);
@@ -317,12 +339,67 @@ function JourneyFlowCanvas({
       const { passed, noData } = evaluateValidation(node.validation, result.rowCount ?? 0, result.rows, nodeResults);
       const newStatus: NodeStatus = passed ? "pass" : noData ? "warn" : "fail";
       if (newStatus !== result.status) {
-        updated[node.id] = { ...result, status: newStatus };
+        updated[node.id] = { ...result, status: newStatus, propagated: false };
         changed = true;
       }
     }
+
+    // Pass B: clear stale propagation flags so we recompute from scratch
+    for (const node of flowNodes) {
+      if (updated[node.id]?.propagated) {
+        updated[node.id] = { ...updated[node.id], status: "pass", propagated: false };
+        changed = true;
+      }
+    }
+
+    // Pass C: propagate failures/warnings up the parent chain
+    // Build child → parent map
+    const parentOf: Record<string, string> = {};
+    for (const n of flowNodes) {
+      if (n.parentNodeId) parentOf[n.id] = n.parentNodeId;
+    }
+    // Collect ancestor IDs for every node that directly has an issue
+    const propagatedIds = new Set<string>();
+    for (const node of flowNodes) {
+      const st = updated[node.id]?.status ?? "idle";
+      if ((st === "fail" || st === "warn" || st === "error") && !updated[node.id]?.propagated) {
+        let pid = parentOf[node.id];
+        while (pid) {
+          propagatedIds.add(pid);
+          pid = parentOf[pid];
+        }
+      }
+    }
+    for (const nodeId of propagatedIds) {
+      const curr = updated[nodeId];
+      const currSt = curr?.status ?? "idle";
+      // Only mark if the ancestor doesn't already have a direct failure
+      if (currSt !== "fail" && currSt !== "error") {
+        updated[nodeId] = { ...(curr ?? { status: "idle" }), status: "warn", propagated: true };
+        changed = true;
+      }
+    }
+
     if (changed) setNodeResults(updated);
   }, [nodeResults]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Emit overall health to parent once all nodes settle ───────────────────
+  const lastEmittedHealthRef = useRef<NodeStatus | null>(null);
+  useEffect(() => {
+    if (!onHealthChange) return;
+    const statuses = Object.values(nodeResults).map(r => r.status);
+    if (statuses.length === 0 || statuses.some(s => s === "loading")) return;
+    // Only consider direct (non-propagated) results for the row-level badge
+    const direct = Object.values(nodeResults).filter(r => !r.propagated);
+    const overall: NodeStatus =
+      direct.some(r => r.status === "fail")  ? "fail"  :
+      direct.some(r => r.status === "error") ? "error" :
+      direct.some(r => r.status === "warn")  ? "warn"  : "pass";
+    if (overall !== lastEmittedHealthRef.current) {
+      lastEmittedHealthRef.current = overall;
+      onHealthChange(overall);
+    }
+  }, [nodeResults, onHealthChange]);
 
   // ── Window-level mouse handlers (attached once, use refs everywhere) ──
   useEffect(() => {
@@ -1004,25 +1081,51 @@ function DbJourneyRow({ journey, selected, onClick }: { journey: Journey; select
   );
 }
 
-function SqlRowItem({ row, columns, color, selected, onClick }: { row: Record<string, string>; columns: string[]; color: string; selected: boolean; onClick: () => void }) {
+function SqlRowItem({ row, columns, color, selected, health, onClick }: { row: Record<string, string>; columns: string[]; color: string; selected: boolean; health?: NodeStatus; onClick: () => void }) {
   const idCol = columns.find(c => c.toLowerCase().includes("order")) ?? columns[0] ?? "";
   const acctCol = columns.find(c => c.toLowerCase() === "bancan" || c.toLowerCase().includes("account")) ?? columns[1] ?? "";
   const statusCol = columns.find(c => c.toLowerCase() === "status") ?? "";
   const dateCol = columns.find(c => c.toLowerCase().includes("ts") || c.toLowerCase().includes("date") || c.toLowerCase().includes("created")) ?? "";
   const status = statusCol ? row[statusCol] : null;
 
+  const healthDot =
+    health === "fail"  ? "#ef4444" :
+    health === "error" ? "#f59e0b" :
+    health === "warn"  ? "#f59e0b" :
+    health === "pass"  ? "#10b981" : null;
+
+  const hasIssue = health === "fail" || health === "error" || health === "warn";
+
   return (
     <button
       onClick={onClick}
       className={`w-full text-left px-3 py-2 transition-all border-l-2 ${selected ? "bg-white/5" : "border-transparent hover:bg-white/5"}`}
-      style={selected ? { borderLeftColor: color, backgroundColor: color + "15" } : {}}
+      style={selected ? { borderLeftColor: color, backgroundColor: color + "15" } : hasIssue ? { borderLeftColor: "#ef444440" } : {}}
     >
       <div className="flex items-start gap-2">
-        <div className="mt-1.5 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        {/* Health dot: pulsing when there's a known issue, config color when no result yet */}
+        <div className="mt-1.5 shrink-0 relative">
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{
+              backgroundColor: healthDot ?? color,
+              boxShadow: healthDot ? `0 0 6px ${healthDot}` : undefined,
+            }}
+          />
+          {hasIssue && (
+            <div
+              className="absolute inset-0 rounded-full animate-ping"
+              style={{ backgroundColor: healthDot!, opacity: 0.4 }}
+            />
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-            <span className="font-mono text-xs font-medium text-white truncate max-w-[150px]">{idCol ? row[idCol] : Object.values(row)[0]}</span>
+            <span className="font-mono text-xs font-medium text-white truncate max-w-[130px]">{idCol ? row[idCol] : Object.values(row)[0]}</span>
             {status && <span className={`text-[9px] font-semibold ${status.toLowerCase() === "completed" || status.toLowerCase() === "active" ? "text-emerald-400" : status.toLowerCase() === "failed" ? "text-red-400" : "text-amber-400"}`}>{status.toUpperCase()}</span>}
+            {hasIssue && !selected && (
+              <span className="text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1">ISSUE</span>
+            )}
           </div>
           {acctCol && acctCol !== idCol && <div className="text-[10px] text-muted-foreground truncate font-mono">{row[acctCol]}</div>}
           {dateCol && row[dateCol] && <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5"><Clock className="w-2.5 h-2.5" /><span className="truncate font-mono">{row[dateCol]}</span></div>}
@@ -1032,7 +1135,7 @@ function SqlRowItem({ row, columns, color, selected, onClick }: { row: Record<st
   );
 }
 
-function SqlGroupSection({ config, selected, onSelect, searchFilter, columnFilters }: { config: JourneyConfig; selected: SelectedItem | null; onSelect: (item: SelectedItem) => void; searchFilter: string; columnFilters: Record<string, string> }) {
+function SqlGroupSection({ config, selected, onSelect, searchFilter, columnFilters, rowHealthCache }: { config: JourneyConfig; selected: SelectedItem | null; onSelect: (item: SelectedItem) => void; searchFilter: string; columnFilters: Record<string, string>; rowHealthCache: Record<string, NodeStatus> }) {
   const [collapsed, setCollapsed] = useState(false);
   const rows = (config.rawRows ?? []).filter(row => {
     if (searchFilter && !Object.values(row).some(v => v?.toLowerCase().includes(searchFilter.toLowerCase()))) return false;
@@ -1044,19 +1147,31 @@ function SqlGroupSection({ config, selected, onSelect, searchFilter, columnFilte
   const columns = config.rawColumns ?? [];
   if (rows.length === 0 && !config.rawRows?.length) return null;
 
+  const issueCount = rows.filter(row => {
+    const idx = (config.rawRows ?? []).indexOf(row);
+    const h = rowHealthCache[`${config.id}:${idx}`];
+    return h === "fail" || h === "error" || h === "warn";
+  }).length;
+
   return (
     <div>
       <button onClick={() => setCollapsed(c => !c)} className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 transition-colors">
         <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex-1 text-left truncate">{config.name}</span>
+        {issueCount > 0 && (
+          <span className="text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1.5 py-0.5">
+            {issueCount} issue{issueCount !== 1 ? "s" : ""}
+          </span>
+        )}
         <span className="text-[9px] text-muted-foreground">{rows.length}</span>
         {config.lastRunAt && <span className="text-[9px] text-muted-foreground/50">{format(new Date(config.lastRunAt), "HH:mm")}</span>}
         {collapsed ? <ChevronRight className="w-3 h-3 text-muted-foreground" /> : <ChevronLeft className="w-3 h-3 text-muted-foreground rotate-90" />}
       </button>
       {!collapsed && rows.map((row, i) => {
         const originalIndex = (config.rawRows ?? []).indexOf(row);
+        const health = rowHealthCache[`${config.id}:${originalIndex}`];
         return (
-          <SqlRowItem key={i} row={row} columns={columns} color={config.color}
+          <SqlRowItem key={i} row={row} columns={columns} color={config.color} health={health}
             selected={selected?.kind === "sql" && selected.configId === config.id && selected.rowIndex === originalIndex}
             onClick={() => onSelect({ kind: "sql", configId: config.id, rowIndex: originalIndex })}
           />
@@ -1097,6 +1212,12 @@ export default function Journeys() {
   const [configs, setConfigs] = useState<JourneyConfig[]>(() => loadJourneyConfigs());
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [rowHealthCache, setRowHealthCache] = useState<Record<string, NodeStatus>>({});
+
+  function handleRowHealthChange(configId: string, rowIndex: number, health: NodeStatus) {
+    const key = `${configId}:${rowIndex}`;
+    setRowHealthCache(prev => prev[key] === health ? prev : { ...prev, [key]: health });
+  }
 
   useEffect(() => {
     const onFocus = () => setConfigs(loadJourneyConfigs());
@@ -1258,7 +1379,7 @@ export default function Journeys() {
 
         <div className="flex-1 overflow-y-auto py-1">
           {sqlConfigs.map(cfg => (
-            <SqlGroupSection key={cfg.id} config={cfg} selected={selected} onSelect={setSelected} searchFilter={search} columnFilters={columnFilters} />
+            <SqlGroupSection key={cfg.id} config={cfg} selected={selected} onSelect={setSelected} searchFilter={search} columnFilters={columnFilters} rowHealthCache={rowHealthCache} />
           ))}
           {dbLoading && dbGroups.length === 0
             ? Array(4).fill(0).map((_, i) => <div key={i} className="px-3 py-1.5"><Skeleton className="h-14 w-full bg-card/50 rounded-lg" /></div>)
@@ -1293,6 +1414,7 @@ export default function Journeys() {
               config={selectedSqlConfig}
               selectedRow={selectedSqlRow}
               onClose={() => setSelected(null)}
+              onHealthChange={h => handleRowHealthChange(selected.configId, selected.rowIndex, h)}
             />
           ) : (
             <SqlRowDetailPanel
