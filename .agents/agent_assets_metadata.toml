@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "p-lTm2_OElnYX8fRimn_y"
+uri = "file://docs/etl-infrastructure-estimation.md"
+type = "text"
+title = "ETL Infrastructure Estimation — Mission Control"
